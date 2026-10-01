@@ -128,8 +128,44 @@ export async function POST(req: NextRequest) {
         file.name.toLowerCase().endsWith('.docx')
       ) {
         const mammoth = await import('mammoth');
-        const result = await mammoth.extractRawText({ buffer });
-        textoExamen = result.value;
+        let imgIndex = 0;
+        let sharpModule: any = null;
+        try {
+          sharpModule = (await import('sharp')).default;
+        } catch (_) {}
+
+        const options = {
+          convertImage: (mammoth.images as any).imgElement(function(element: any) {
+            return element.read("base64").then(async function(imageBuffer: string) {
+              imgIndex++;
+              const placeholder = `[IMAGEN_${imgIndex}]`;
+              const mime = element.contentType || 'image/jpeg';
+              let dataUri = `data:${mime};base64,${imageBuffer}`;
+              if (sharpModule) {
+                try {
+                  const raw = Buffer.from(imageBuffer, 'base64');
+                  const resized = await sharpModule(raw)
+                    .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
+                    .jpeg({ quality: 80 })
+                    .toBuffer();
+                  dataUri = `data:image/jpeg;base64,${resized.toString('base64')}`;
+                } catch (_) {}
+              }
+              imagenesMap[placeholder] = dataUri;
+              return { src: placeholder };
+            });
+          })
+        };
+
+        const result = await mammoth.convertToHtml({ buffer }, options);
+        textoExamen = result.value
+          .replace(/<img[^>]*src="(\[IMAGEN_\d+\])"[^>]*>/gi, '\n$1\n')
+          .replace(/<\/p>/gi, '\n')
+          .replace(/<br\s*\/?>/gi, '\n')
+          .replace(/<[^>]+>/g, '')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
       } else if (file.name.toLowerCase().endsWith('.doc')) {
         return NextResponse.json({
           error: 'El formato .doc antiguo no está soportado. Por favor convierte el archivo a .docx o PDF.'
@@ -152,31 +188,41 @@ export async function POST(req: NextRequest) {
     // Call Gemini AI
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
     
-    const prompt = `Eres un asistente pedagógico de élite especializado en digitalizar exámenes del Colegio Nuevo San Luis Gonzaga para convertirlos en pruebas digitales interactivas pregunta por pregunta.
+    const prompt = `Eres un diseñador pedagógico de élite especializado en digitalizar exámenes del Colegio Nuevo San Luis Gonzaga para convertirlos en pruebas digitales interactivas pregunta por pregunta, atractivas y visuales.
 
 Analiza minuciosamente el documento del examen y extrae TODAS las preguntas de selección múltiple con la máxima fidelidad pedagógica.
 
 REGLAS OBLIGATORIAS:
 
-1. OMISIÓN DEL ENCABEZADO INSTITUCIONAL:
-   - OMITE COMPLETAMENTE el encabezado del colegio (logo o escudo [IMAGEN_1], nombre "Colegio Nuevo San Luis Gonzaga", fecha, año lectivo, grado, líneas de nombre de estudiante, indicaciones iniciales o rúbricas de presentación).
-   - NUNCA conviertas el encabezado institucional en una pregunta ni uses [IMAGEN_1] (el escudo) en preguntas o respuestas.
-   - Únicamente utiliza esa información para generar un "titulo" descriptivo y limpio (ej: "Examen de Admisión Grado 2° - 2027").
+1. OMISIÓN TOTAL Y RIGUROSA DEL ENCABEZADO INSTITUCIONAL:
+   - OMITE COMPLETAMENTE el encabezado del colegio (logo institucional o escudo [IMAGEN_1], nombre "Colegio Nuevo San Luis Gonzaga", fecha, año lectivo, grado, líneas de nombre de estudiante "Nombre: ________", indicaciones iniciales o rúbricas de presentación).
+   - NUNCA conviertas el encabezado institucional en una pregunta.
+   - [IMAGEN_1] (el logo/escudo del colegio en el encabezado) NUNCA debe asignarse a ninguna pregunta ni opción de respuesta.
+   - Las preguntas reales del examen SIEMPRE comienzan a partir de la Pregunta 1 numerada en el cuerpo del documento.
+   - Únicamente utiliza la información del encabezado para generar un "titulo" descriptivo y limpio (ej: "Examen de Admisión Grado 2° - 2027").
 
-2. IMÁGENES EN PREGUNTAS Y EN OPCIONES (SECUENCIAS, SIMETRÍAS, FIGURAS):
-   - Se han identificado y extraído ${totalImgCount} imágenes en orden secuencial: [IMAGEN_1] a [IMAGEN_${totalImgCount}].
-   - Si una pregunta tiene una imagen de apoyo o diagrama principal (ej: un ábaco, un gráfico, una secuencia inicial, figura botánica), asígnala al campo "imagen" de la pregunta (ej: "[IMAGEN_2]").
-   - Si las OPCIONES de respuesta (A, B, C, D) son imágenes (muy común en secuencias, simetrías, figuras o piezas faltantes):
-     - Asigna el identificador de la imagen correspondiente en el campo "imagen" de cada opción (ej: opción A: "imagen": "[IMAGEN_5]", opción B: "imagen": "[IMAGEN_6]", etc.).
+2. ASIGNACIÓN EXACTA DE IMÁGENES EMBEBIDAS DEL DOCUMENTO:
+   - Se han extraído ${totalImgCount} imágenes en orden secuencial: [IMAGEN_1] a [IMAGEN_${totalImgCount}].
+   - Las imágenes reales de las preguntas empiezan desde [IMAGEN_2] en adelante.
+   - Si una pregunta tiene una imagen de apoyo o diagrama principal (ej: un ábaco, un gráfico, una secuencia inicial, figura botánica), asigna el token [IMAGEN_X] al campo "imagen" (ej: "[IMAGEN_2]", "[IMAGEN_3]", "[IMAGEN_4]").
+   - Si las OPCIONES de respuesta (A, B, C, D) son imágenes (muy común en secuencias, simetrías, figuras geométricas o piezas faltantes):
+     - Asigna el identificador [IMAGEN_Y] a "imagen" de cada opción (ej: A: "[IMAGEN_5]", B: "[IMAGEN_6]", etc.).
      - Si la opción no tiene texto adicional, coloca en "texto" una etiqueta clara como "Opción A", "Opción B" o la descripción de la figura.
      - Si la opción es solo texto sin imagen, coloca "imagen": null.
 
-3. CONTEXTOS, LECTURAS Y SITUACIONES COMPARTIDAS ENTRE VARIAS PREGUNTAS:
+3. PREGUNTAS DE PRIMARIA (HACERLAS LLAMATIVAS Y CON APOYO VISUAL):
+   - Si el examen corresponde a Educación PRIMARIA o Infantil (ej: Transición, 1°, 2°, 3°, 4°, 5° de primaria o Prueba de Admisión de Primaria):
+     a) Haz los enunciados de las preguntas mucho más llamativos, claros y motivantes para niños pequeños (usa emojis educativos alusivos al inicio como 🔢, 🍎, 🧮, 🐳, 🎈, 👞, 🌿, 🏠, 📖, resalta palabras clave en negrita).
+     b) Si una pregunta de primaria NO tiene imagen en el documento original, genera en el campo "svgIlustracion" un gráfico vectorial SVG educativo, limpio, colorido y bonito (código SVG completo con viewBox="0 0 400 160", formas redondeadas, colores alegres y suaves, iconos o representaciones visuales alusivas a la pregunta: ej. manzanas, conteo, animales, figuras, libros, reglas, monedas o tarjetas) para que el niño tenga un apoyo visual estimulante.
+     c) Si la pregunta YA tiene imagen del documento en "imagen", coloca "svgIlustracion": null.
+   - Para exámenes de SECUNDARIA / BACHILLERATO (6° a 11°), mantén la redacción formal académica y coloca "svgIlustracion": null.
+
+4. CONTEXTOS, LECTURAS Y SITUACIONES COMPARTIDAS ENTRE VARIAS PREGUNTAS:
    - Si un texto, lectura, situación o imagen indica que sirve para varias preguntas (por ejemplo: "Lee la siguiente situación y responde las preguntas 16 y 17", o "Con base en la siguiente lectura contesta las preguntas 1 a 3"):
      DEBES INCLUIR el texto de la situación y la imagen asociada en EL ENUNCIADO DE CADA UNA de esas preguntas (en la 16 y en la 17).
      De esta forma, cuando el estudiante esté en la pregunta 17, tendrá el texto y la imagen frente a él y no tendrá que retroceder a la pregunta 16.
 
-4. CLASIFICACIÓN EN 5 ÁREAS BÁSICAS (PARA EXÁMENES DE ADMISIÓN):
+5. CLASIFICACIÓN EN 5 ÁREAS BÁSICAS (PARA EXÁMENES DE ADMISIÓN):
    ${esAdmision ? `Este es un EXAMEN DE ADMISIÓN. Clasifica obligatoriamente cada pregunta en el campo "area" con uno de estos 5 valores exactos:
    - "Matemáticas" (operaciones, problemas, lógica, simetría, secuencias numéricas, conteo)
    - "Español" (sílabas, oraciones, comprensión lectora, vocabulario, gramática)
@@ -184,7 +230,7 @@ REGLAS OBLIGATORIAS:
    - "Ciencias Sociales" (familia, comunidad, normas, convivencia, días de la semana, entorno)
    - "Inglés" (vocabulario, animales, descripciones, partes de la casa)` : `Indica en el campo "area" la asignatura o materia correspondiente.`}
 
-5. REVISIÓN RIGUROSA Y CAMPO "notas":
+6. REVISIÓN RIGUROSA Y CAMPO "notas":
    - Extrae rigurosamente todas las preguntas numeradas del documento sin omitir ninguna.
    - Si detectas alguna ambigüedad, opción faltante, o detalle que el docente deba verificar antes de activar el examen, regístralo brevemente en el campo "notas" de la pregunta para orientar al docente en el editor.
 
@@ -194,9 +240,10 @@ Devuelve estrictamente un JSON válido con esta estructura exacta:
   "materia": "${esAdmision ? 'Prueba General de Admisión (5 Áreas Básicas)' : 'materia o asignatura'}",
   "preguntas": [
     {
-      "enunciado": "texto completo de la pregunta (incluyendo la situación compartida si aplica)",
+      "enunciado": "texto completo y llamativo de la pregunta (incluyendo la situación compartida si aplica)",
       "area": "${esAdmision ? 'Matemáticas' : 'Materia'}",
       "imagen": "[IMAGEN_X] o null",
+      "svgIlustracion": "<svg viewBox='0 0 400 160' xmlns='http://www.w3.org/2000/svg'>...</svg> o null",
       "opciones": [
         {"letra": "A", "texto": "texto de opción o Opción A", "imagen": "[IMAGEN_Y] o null"},
         {"letra": "B", "texto": "texto de opción o Opción B", "imagen": "[IMAGEN_Z] o null"},
@@ -298,12 +345,26 @@ ${textoExamen}`;
     function resolveImg(imgKey: string | null | undefined, text: string): string | null {
       if (imgKey) {
         const trimmed = imgKey.trim();
+        // Ignore header shield [IMAGEN_1]
+        if (trimmed === '[IMAGEN_1]') return null;
         if (imagenesMap[trimmed]) return imagenesMap[trimmed];
         const m1 = trimmed.match(/\[IMAGEN_\d+\]/);
-        if (m1 && imagenesMap[m1[0]]) return imagenesMap[m1[0]];
+        if (m1 && m1[0] !== '[IMAGEN_1]' && imagenesMap[m1[0]]) return imagenesMap[m1[0]];
       }
       const m = (text || '').match(/\[IMAGEN_\d+\]/);
-      if (m && imagenesMap[m[0]]) return imagenesMap[m[0]];
+      if (m && m[0] !== '[IMAGEN_1]' && imagenesMap[m[0]]) return imagenesMap[m[0]];
+      return null;
+    }
+
+    // Helper to resolve question image (or fallback to generated SVG illustration)
+    function resolveQuestionImg(p: ExtractedExamen['preguntas'][0]): string | null {
+      const docImg = resolveImg(p.imagen, p.enunciado);
+      if (docImg) return docImg;
+
+      if (p.svgIlustracion && typeof p.svgIlustracion === 'string' && p.svgIlustracion.includes('<svg')) {
+        const cleanSvg = p.svgIlustracion.trim();
+        return `data:image/svg+xml;base64,${Buffer.from(cleanSvg, 'utf8').toString('base64')}`;
+      }
       return null;
     }
 
@@ -341,7 +402,7 @@ ${textoExamen}`;
       let globalOrden = 1;
       for (const qList of Array.from(areasMap.values())) {
         for (const p of qList) {
-          const imgData = resolveImg(p.imagen, p.enunciado);
+          const imgData = resolveQuestionImg(p);
           const opcionesMapeadas = (p.opciones || []).map(op => {
             const opImg = resolveImg(op.imagen, op.texto);
             let cleanedText = (op.texto || '').replace(/\[IMAGEN_\d+\]/g, '').trim();
@@ -371,7 +432,7 @@ ${textoExamen}`;
       // Regular exam: 100% distributed evenly across all questions
       const pesos = distribuirPesos(preguntas.length);
       preguntasFinales = preguntas.map((p, i) => {
-        const imgData = resolveImg(p.imagen, p.enunciado);
+        const imgData = resolveQuestionImg(p);
         const opcionesMapeadas = (p.opciones || []).map(op => {
           const opImg = resolveImg(op.imagen, op.texto);
           let cleanedText = (op.texto || '').replace(/\[IMAGEN_\d+\]/g, '').trim();
@@ -443,6 +504,7 @@ interface ExtractedExamen {
     area?: string;
     opciones: Array<{ letra: string; texto: string; imagen?: string | null }>;
     imagen?: string | null;
+    svgIlustracion?: string | null;
     peso?: number;
     notas?: string | null;
   }>;
