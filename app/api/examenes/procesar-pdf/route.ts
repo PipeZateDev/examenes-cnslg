@@ -418,12 +418,18 @@ REGLAS OBLIGATORIAS:
    - TÍTULOS Y TAMAÑOS:
      - Si una lectura o situación compartida tiene un título destacado, indícalo con encabezado markdown (# Título o ## Subtítulo).
 
-4. CONTEXTOS, LECTURAS Y SITUACIONES COMPARTIDAS ENTRE VARIAS PREGUNTAS:
+4. DETECCIÓN Y ASIGNACIÓN AUTOMÁTICA DE LA TABLA DE RESPUESTAS CORRECTAS:
+   - Al final del examen o en el documento suele venir una **Tabla de Respuestas**, **Clave de Respuestas**, **Hoja de Claves**, o matriz con las respuestas correctas (ej: "1: B, 2: A, 3: C, 4: D...", o una tabla con columnas Número | Clave | Área).
+   - DEBES EXTRAER con extrema exactitud la letra correcta de cada pregunta y asignarla en el campo "respuestaCorrecta": "A" | "B" | "C" | "D" (en mayúscula).
+   - OMISIÓN TOTAL DE LA TABLA: Esta tabla de respuestas es EXCLUSIVA para calificar internamente. NUNCA la conviertas en una pregunta, ni la agregues al texto del enunciado de ninguna pregunta. Los alumnos NO deben ver esta tabla en ningún momento.
+   - Si el documento no contiene tabla de respuestas, asigna "respuestaCorrecta": null.
+
+5. CONTEXTOS, LECTURAS Y SITUACIONES COMPARTIDAS ENTRE VARIAS PREGUNTAS:
    - Si un texto, lectura, situación o imagen indica que sirve para varias preguntas (por ejemplo: "Lee la siguiente situación y responde las preguntas 16 y 17", o "Con base en la siguiente lectura contesta las preguntas 1 a 3"):
      DEBES INCLUIR el texto de la situación y la imagen asociada en EL ENUNCIADO DE CADA UNA de esas preguntas (en la 16 y en la 17).
      De esta forma, cuando el estudiante esté en la pregunta 17, tendrá el texto y la imagen frente a él y no tendrá que retroceder a la pregunta 16.
 
-5. CLASIFICACIÓN EN 5 ÁREAS BÁSICAS (PARA EXÁMENES DE ADMISIÓN):
+6. CLASIFICACIÓN EN 5 ÁREAS BÁSICAS (PARA EXÁMENES DE ADMISIÓN):
    ${esAdmision ? `Este es un EXAMEN DE ADMISIÓN. Clasifica obligatoriamente cada pregunta en el campo "area" con uno de estos 5 valores exactos:
    - "Matemáticas" (operaciones, problemas, lógica, simetría, secuencias numéricas, conteo)
    - "Español" (sílabas, oraciones, comprensión lectora, vocabulario, gramática)
@@ -431,7 +437,7 @@ REGLAS OBLIGATORIAS:
    - "Ciencias Sociales" (familia, comunidad, normas, convivencia, días de la semana, entorno)
    - "Inglés" (vocabulario, animales, descripciones, partes de la casa)` : `Indica en el campo "area" la asignatura o materia correspondiente.`}
 
-6. REVISIÓN RIGUROSA Y CAMPO "notas":
+7. REVISIÓN RIGUROSA Y CAMPO "notas":
    - Extrae rigurosamente todas las preguntas numeradas del documento sin omitir ninguna.
    - Si detectas alguna ambigüedad, opción faltante, o detalle que el docente deba verificar antes de activar el examen, regístralo brevemente en el campo "notas" de la pregunta para orientar al docente en el editor.
 
@@ -444,6 +450,7 @@ Devuelve estrictamente un JSON válido con esta estructura exacta:
       "enunciado": "texto completo de la pregunta (incluyendo la situación compartida y palabras con formato **negrita** o <u>subrayado</u> si aplica)",
       "area": "${esAdmision ? 'Matemáticas' : 'Materia'}",
       "imagen": "[IMAGEN_X] o null",
+      "respuestaCorrecta": "A",
       "opciones": [
         {"letra": "A", "texto": "texto de opción o Opción A (preservando formato si aplica)", "imagen": "[IMAGEN_Y] o null"},
         {"letra": "B", "texto": "texto de opción o Opción B", "imagen": "[IMAGEN_Z] o null"},
@@ -583,6 +590,13 @@ ${textoExamen}`;
       return null;
     }
 
+    // Helper to sanitize correct answer key letter
+    function cleanRespuestaCorrecta(rc: any): string | null {
+      if (!rc || typeof rc !== 'string') return null;
+      const match = rc.trim().toUpperCase().match(/([A-E])/);
+      return match ? match[1] : null;
+    }
+
     // Weight calculation & image attachment
     // In admissions: Each area sums to 100%!
     // In regular: All questions sum to 100% total!
@@ -591,7 +605,7 @@ ${textoExamen}`;
       enunciado: string;
       area?: string;
       opciones: Array<{ letra: string; texto: string; imagen?: string | null }>;
-      respuestaCorrecta: null;
+      respuestaCorrecta: string | null;
       peso: number;
       imagen?: string | null;
       notas?: string | null;
@@ -636,7 +650,7 @@ ${textoExamen}`;
             enunciado: p.enunciado.replace(/\[IMAGEN_\d+\]/g, '').trim(),
             area: p.area || 'General',
             opciones: opcionesMapeadas,
-            respuestaCorrecta: null,
+            respuestaCorrecta: cleanRespuestaCorrecta(p.respuestaCorrecta),
             peso: (p as { peso?: number }).peso || 20,
             imagen: imgData,
             notas: p.notas || null,
@@ -666,7 +680,7 @@ ${textoExamen}`;
           enunciado: p.enunciado.replace(/\[IMAGEN_\d+\]/g, '').trim(),
           area: p.area || undefined,
           opciones: opcionesMapeadas,
-          respuestaCorrecta: null,
+          respuestaCorrecta: cleanRespuestaCorrecta(p.respuestaCorrecta),
           peso: pesos[i],
           imagen: imgData,
           notas: p.notas || null,
@@ -718,6 +732,7 @@ interface ExtractedExamen {
     enunciado: string;
     area?: string;
     opciones: Array<{ letra: string; texto: string; imagen?: string | null }>;
+    respuestaCorrecta?: string | null;
     imagen?: string | null;
     peso?: number;
     notas?: string | null;
