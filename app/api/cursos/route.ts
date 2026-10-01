@@ -3,32 +3,133 @@ import { getDb, getDbReportes } from '@/lib/mongodb';
 import { getSessionFromRequest, hasRole } from '@/lib/auth';
 import { ObjectId } from 'mongodb';
 
-// GET /api/cursos - List courses
+// Default standard courses list for CNSLG in case DB has only partial records
+const DEFAULT_CNSLG_COURSES = [
+  'Kinder', 'Transición',
+  '101', '102', '201', '202', '301', '302', '401', '402', '501', '502',
+  '601', '602', '701', '702', '801', '802', '901', '902',
+  '1001', '1002', '1101', '1102'
+];
+
+// Educational grade sorter: Preescolar -> Primaria (101..) -> Bachillerato (601..1102) -> Otros
+function parseCourseOrder(nombre: string): number {
+  const norm = nombre.toLowerCase().trim().replace(/^(curso|grado)\s+/i, '');
+
+  if (norm.includes('párvulo') || norm.includes('parvulo')) return 10;
+  if (norm.includes('pre-jardín') || norm.includes('prejardin') || norm.includes('pre jardín') || norm.includes('pre jardin')) return 20;
+  if (norm.includes('jardín') || norm.includes('jardin')) return 30;
+  if (norm.includes('kinder') || norm.includes('kínder')) return 40;
+  if (norm.includes('transición') || norm.includes('transicion')) return 50;
+
+  const numMatch = norm.match(/^(\d+)/);
+  if (numMatch) {
+    return 1000 + parseInt(numMatch[1], 10);
+  }
+
+  if (norm.includes('primero') || norm.includes('1°') || norm.includes('1-')) return 1100;
+  if (norm.includes('segundo') || norm.includes('2°') || norm.includes('2-')) return 1200;
+  if (norm.includes('tercero') || norm.includes('3°') || norm.includes('3-')) return 1300;
+  if (norm.includes('cuarto') || norm.includes('4°') || norm.includes('4-')) return 1400;
+  if (norm.includes('quinto') || norm.includes('5°') || norm.includes('5-')) return 1500;
+  if (norm.includes('sexto') || norm.includes('6°') || norm.includes('6-')) return 1600;
+  if (norm.includes('séptimo') || norm.includes('septimo') || norm.includes('7°') || norm.includes('7-')) return 1700;
+  if (norm.includes('octavo') || norm.includes('8°') || norm.includes('8-')) return 1800;
+  if (norm.includes('noveno') || norm.includes('9°') || norm.includes('9-')) return 1900;
+  if (norm.includes('décimo') || norm.includes('decimo') || norm.includes('10°') || norm.includes('10-')) return 2000;
+  if (norm.includes('once') || norm.includes('11°') || norm.includes('11-')) return 2100;
+
+  if (norm.includes('admisi')) return 8000;
+  return 9000;
+}
+
+// GET /api/cursos - List courses with student counts per course & unassigned students
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session || session.rol === 'estudiante') {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 
-  let db = null;
+  let dbReportes = null;
   try {
-    db = await getDbReportes();
+    dbReportes = await getDbReportes();
   } catch (_) {}
-  if (!db) {
-    db = await getDb();
+  const dbExamenes = await getDb();
+  const dbStudents = dbReportes || dbExamenes;
+
+  // 1. Fetch courses from DB
+  let dbCourses = await dbStudents.collection('courses').find({}).toArray();
+  if (!dbCourses || dbCourses.length === 0) {
+    dbCourses = await dbExamenes.collection('courses').find({}).toArray();
   }
 
-  let cursos = await db.collection('courses').find({}).sort({ nombre: 1 }).toArray();
+  // Combine with default CNSLG courses to make sure all grades are present
+  const existingCourseNames = new Set(dbCourses.map(c => String(c.nombre).trim().toLowerCase()));
+  const allCoursesList: Array<{ _id?: string; nombre: string; anioLectivo?: number; totalEstudiantes?: number }> = [
+    ...dbCourses.map(c => ({
+      _id: c._id.toString(),
+      nombre: String(c.nombre).trim(),
+      anioLectivo: c.anioLectivo,
+    }))
+  ];
 
-  if (!cursos || cursos.length === 0) {
-    // Also try other DB
-    try {
-      const dbAlt = await getDb();
-      cursos = await dbAlt.collection('courses').find({}).sort({ nombre: 1 }).toArray();
-    } catch (_) {}
-  }
+  DEFAULT_CNSLG_COURSES.forEach(defName => {
+    if (!existingCourseNames.has(defName.toLowerCase())) {
+      allCoursesList.push({
+        nombre: defName,
+      });
+    }
+  });
 
-  return NextResponse.json({ cursos: cursos || [] });
+  // 2. Count students per course in MongoDB
+  const [studentCounts, sinCursoCount, totalEstudiantes] = await Promise.all([
+    dbStudents.collection('students').aggregate([
+      { $match: { esAdmision: { $ne: true } } },
+      { $group: { _id: '$curso', count: { $sum: 1 } } }
+    ]).toArray(),
+    dbStudents.collection('students').countDocuments({
+      esAdmision: { $ne: true },
+      $or: [
+        { curso: { $exists: false } },
+        { curso: null },
+        { curso: '' },
+        { curso: 'Sin Curso' },
+        { curso: 'sin_curso' }
+      ]
+    }),
+    dbStudents.collection('students').countDocuments({ esAdmision: { $ne: true } }),
+  ]);
+
+  const countMap = new Map<string, number>();
+  studentCounts.forEach(s => {
+    if (s._id) {
+      const cleanKey = String(s._id).trim().toLowerCase();
+      countMap.set(cleanKey, (countMap.get(cleanKey) || 0) + Number(s.count || 0));
+    }
+  });
+
+  // Attach student count to each course
+  const cursosConConteo = allCoursesList.map(c => {
+    const cleanName = c.nombre.toLowerCase();
+    const count = countMap.get(cleanName) || 0;
+    return {
+      ...c,
+      totalEstudiantes: count,
+    };
+  });
+
+  // Sort courses by educational grade order
+  cursosConConteo.sort((a, b) => {
+    const orderA = parseCourseOrder(a.nombre);
+    const orderB = parseCourseOrder(b.nombre);
+    if (orderA !== orderB) return orderA - orderB;
+    return a.nombre.localeCompare(b.nombre, 'es', { numeric: true });
+  });
+
+  return NextResponse.json({
+    cursos: cursosConConteo,
+    sinCursoCount,
+    totalEstudiantes,
+  });
 }
 
 // POST /api/cursos - Create new course
@@ -49,7 +150,7 @@ export async function POST(req: NextRequest) {
   const courseDoc = {
     nombre: cleanNombre,
     anioLectivo: anioLectivo ? Number(anioLectivo) : new Date().getFullYear(),
-    grado: grado ? String(grado).trim() : '',
+    grado: grado ? String(grado).trim() : cleanNombre,
     activo: true,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -57,12 +158,20 @@ export async function POST(req: NextRequest) {
 
   try {
     const dbReportes = await getDbReportes();
-    await dbReportes.collection('courses').insertOne(courseDoc);
+    await dbReportes.collection('courses').updateOne(
+      { nombre: cleanNombre },
+      { $set: courseDoc },
+      { upsert: true }
+    );
   } catch (_) {}
 
   try {
     const dbExamenes = await getDb();
-    await dbExamenes.collection('courses').insertOne(courseDoc);
+    await dbExamenes.collection('courses').updateOne(
+      { nombre: cleanNombre },
+      { $set: courseDoc },
+      { upsert: true }
+    );
   } catch (_) {}
 
   return NextResponse.json({ ok: true, course: courseDoc }, { status: 201 });
@@ -106,3 +215,28 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ ok: true });
 }
 
+// DELETE /api/cursos - Delete course
+export async function DELETE(req: NextRequest) {
+  const session = await getSessionFromRequest(req);
+  if (!session || !hasRole(session.rol, 'admin')) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(req.url);
+  const id = searchParams.get('id');
+  if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 });
+
+  const filter = ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { nombre: id };
+
+  try {
+    const dbReportes = await getDbReportes();
+    await dbReportes.collection('courses').deleteOne(filter);
+  } catch (_) {}
+
+  try {
+    const dbExamenes = await getDb();
+    await dbExamenes.collection('courses').deleteOne(filter);
+  } catch (_) {}
+
+  return NextResponse.json({ ok: true });
+}

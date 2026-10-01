@@ -13,8 +13,9 @@ export async function GET(req: NextRequest) {
   const q = searchParams.get('q')?.trim() || '';
   const curso = searchParams.get('curso')?.trim() || '';
   const esAdmisionParam = searchParams.get('admision'); // '1' for Aspirantes, '0' for Regulares
+  const sinCursoParam = searchParams.get('sinCurso') === '1' || curso === 'sin_curso' || curso === 'Sin Curso';
   const page = Math.max(1, Number(searchParams.get('page') || 1));
-  const limit = Math.min(100, Math.max(1, Number(searchParams.get('limit') || 50)));
+  const limit = Math.min(500, Math.max(1, Number(searchParams.get('limit') || 50)));
   const skip = (page - 1) * limit;
 
   const dbExamenes = await getDb();
@@ -26,15 +27,33 @@ export async function GET(req: NextRequest) {
   const filter: Record<string, unknown> = {};
 
   if (q) {
-    filter.$or = [
-      { nombreCompleto: { $regex: q, $options: 'i' } },
-      { numeroDocumento: { $regex: q, $options: 'i' } },
-      { nombres: { $regex: q, $options: 'i' } },
-      { apellidos: { $regex: q, $options: 'i' } },
-    ];
+    filter.$and = filter.$and || [];
+    (filter.$and as Array<Record<string, unknown>>).push({
+      $or: [
+        { nombreCompleto: { $regex: q, $options: 'i' } },
+        { numeroDocumento: { $regex: q, $options: 'i' } },
+        { nombres: { $regex: q, $options: 'i' } },
+        { apellidos: { $regex: q, $options: 'i' } },
+      ]
+    });
   }
 
-  if (curso) {
+  if (sinCursoParam) {
+    const unassignedFilter = {
+      $or: [
+        { curso: { $exists: false } },
+        { curso: null },
+        { curso: '' },
+        { curso: 'Sin Curso' },
+        { curso: 'sin_curso' }
+      ]
+    };
+    if (filter.$and) {
+      (filter.$and as Array<Record<string, unknown>>).push(unassignedFilter);
+    } else {
+      filter.$or = unassignedFilter.$or;
+    }
+  } else if (curso) {
     filter.curso = curso;
   }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 
 interface StudentItem {
@@ -24,6 +24,7 @@ interface CourseItem {
   nombre: string;
   anioLectivo?: number;
   grado?: string;
+  totalEstudiantes?: number;
 }
 
 interface EstudiantesManagerProps {
@@ -59,6 +60,18 @@ export default function EstudiantesManager({
     initialTab === 'aspirantes' ? 'aspirantes' : initialTab === 'cursos' ? 'cursos' : 'estudiantes'
   );
 
+  // Course Detail / Drilldown State
+  const [selectedCourseView, setSelectedCourseView] = useState<string | null>(null); // course name or 'SIN_CURSO'
+  const [courseStudents, setCourseStudents] = useState<StudentItem[]>([]);
+  const [loadingCourseStudents, setLoadingCourseStudents] = useState(false);
+  const [sinCursoCount, setSinCursoCount] = useState(0);
+
+  // Bulk assignment state in course view
+  const [unassignedPool, setUnassignedPool] = useState<StudentItem[]>([]);
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [selectedToAssign, setSelectedToAssign] = useState<string[]>([]);
+  const [assigningBatch, setAssigningBatch] = useState(false);
+
   // Modals state
   const [editingStudent, setEditingStudent] = useState<StudentItem | null>(null);
   const [isCreatingStudent, setIsCreatingStudent] = useState(false);
@@ -73,6 +86,7 @@ export default function EstudiantesManager({
   const [selectedCurso, setSelectedCurso] = useState(cursoFilter || '');
   const [searchingLive, setSearchingLive] = useState(false);
   const [courseSearch, setCourseSearch] = useState('');
+  const [innerCourseStudentSearch, setInnerCourseStudentSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(page || 1);
   const [currentTotal, setCurrentTotal] = useState(total || 0);
   const [currentTotalPages, setCurrentTotalPages] = useState(totalPages || 1);
@@ -83,6 +97,24 @@ export default function EstudiantesManager({
     setToast({ tipo, mensaje });
     setTimeout(() => setToast(null), 4000);
   };
+
+  // Load courses with student counts
+  const fetchCursosData = async () => {
+    try {
+      const res = await fetch('/api/cursos');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.cursos) setCursos(data.cursos);
+        if (data.sinCursoCount !== undefined) setSinCursoCount(data.sinCursoCount);
+      }
+    } catch (err) {
+      console.error('Error loading courses:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchCursosData();
+  }, []);
 
   // Debounced real-time fetch from API when search, course or tab changes
   useEffect(() => {
@@ -116,6 +148,114 @@ export default function EstudiantesManager({
 
     return () => clearTimeout(handler);
   }, [searchTerm, selectedCurso, activeTab]);
+
+  // Load students for a specific course or for unassigned students
+  const loadCourseStudents = async (courseName: string) => {
+    setSelectedCourseView(courseName);
+    setLoadingCourseStudents(true);
+    setInnerCourseStudentSearch('');
+    try {
+      const params = new URLSearchParams();
+      params.set('admision', '0');
+      params.set('limit', '300');
+
+      if (courseName === 'SIN_CURSO') {
+        params.set('sinCurso', '1');
+      } else {
+        params.set('curso', courseName);
+      }
+
+      const res = await fetch(`/api/estudiantes?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        setCourseStudents(data.estudiantes || []);
+      }
+    } catch (err) {
+      console.error('Error fetching course students:', err);
+      showToast('error', 'Error al cargar estudiantes del curso');
+    } finally {
+      setLoadingCourseStudents(false);
+    }
+  };
+
+  // Open batch assign modal to assign unassigned students to current course
+  const openAssignModal = async () => {
+    setIsAssignModalOpen(true);
+    setSelectedToAssign([]);
+    try {
+      const res = await fetch('/api/estudiantes?admision=0&sinCurso=1&limit=300');
+      if (res.ok) {
+        const data = await res.json();
+        setUnassignedPool(data.estudiantes || []);
+      }
+    } catch (err) {
+      console.error('Error loading unassigned pool:', err);
+    }
+  };
+
+  // Bulk assign selected students to the currently open course
+  const handleAssignSelectedToCourse = async (targetCourseName: string) => {
+    if (!targetCourseName || targetCourseName === 'SIN_CURSO') return;
+    if (selectedToAssign.length === 0) {
+      showToast('error', 'Selecciona al menos un estudiante para asignar');
+      return;
+    }
+
+    setAssigningBatch(true);
+    try {
+      const res = await fetch('/api/cursos/asignar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          curso: targetCourseName,
+          studentDocumentos: selectedToAssign,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast('error', data.error || 'Error al asignar estudiantes');
+        return;
+      }
+
+      showToast('success', `✓ ${data.updatedCount} estudiante(s) asignados al Curso ${targetCourseName}`);
+      setIsAssignModalOpen(false);
+      setSelectedToAssign([]);
+      // Reload current course view and course summary
+      loadCourseStudents(targetCourseName);
+      fetchCursosData();
+    } catch {
+      showToast('error', 'Error de conexión');
+    } finally {
+      setAssigningBatch(false);
+    }
+  };
+
+  // Move or reassign an individual student to another course
+  const handleReassignIndividual = async (numeroDocumento: string, newCourse: string) => {
+    try {
+      const res = await fetch('/api/cursos/asignar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          curso: newCourse,
+          studentDocumentos: [numeroDocumento],
+        }),
+      });
+
+      if (!res.ok) {
+        showToast('error', 'Error al reasignar estudiante');
+        return;
+      }
+
+      showToast('success', newCourse ? `✓ Estudiante asignado al Curso ${newCourse}` : '✓ Estudiante marcado como Sin Curso');
+      if (selectedCourseView) {
+        loadCourseStudents(selectedCourseView);
+      }
+      fetchCursosData();
+    } catch {
+      showToast('error', 'Error al cambiar curso');
+    }
+  };
 
   // Form for student / aspirante editing/creation
   const [formData, setFormData] = useState({
@@ -154,8 +294,8 @@ export default function EstudiantesManager({
       nombreCompleto: '',
       nombres: '',
       apellidos: '',
-      curso: '',
-      grado: '',
+      curso: selectedCourseView && selectedCourseView !== 'SIN_CURSO' ? selectedCourseView : '',
+      grado: selectedCourseView && selectedCourseView !== 'SIN_CURSO' ? selectedCourseView : '',
       esAdmision: false,
       activo: true,
     });
@@ -206,6 +346,10 @@ export default function EstudiantesManager({
               : st
           )
         );
+        if (selectedCourseView) {
+          loadCourseStudents(selectedCourseView);
+        }
+        fetchCursosData();
         showToast('success', '✓ Datos actualizados correctamente en MongoDB');
         setEditingStudent(null);
       } else {
@@ -227,6 +371,10 @@ export default function EstudiantesManager({
         } else {
           setCountRegulares(c => c + 1);
         }
+        if (selectedCourseView) {
+          loadCourseStudents(selectedCourseView);
+        }
+        fetchCursosData();
         showToast(
           'success',
           formData.esAdmision
@@ -259,16 +407,28 @@ export default function EstudiantesManager({
         showToast('error', data.error || 'Error al crear curso');
         return;
       }
-      setCursos(prev => [...prev, data.curso]);
+      setCursos(prev => [...prev, data.course]);
       setNewCourseName('');
       setIsCreatingCourse(false);
-      showToast('success', `✓ Curso ${data.curso.nombre} creado exitosamente en MongoDB`);
+      fetchCursosData();
+      showToast('success', `✓ Curso ${data.course.nombre} creado exitosamente en MongoDB`);
     } catch {
       showToast('error', 'Error al crear curso');
     } finally {
       setLoading(false);
     }
   };
+
+  // Filtered course students inside detail view
+  const filteredInnerCourseStudents = useMemo(() => {
+    const q = innerCourseStudentSearch.toLowerCase().trim();
+    if (!q) return courseStudents;
+    return courseStudents.filter(
+      st =>
+        st.nombreCompleto.toLowerCase().includes(q) ||
+        st.numeroDocumento.toLowerCase().includes(q)
+    );
+  }, [courseStudents, innerCourseStudentSearch]);
 
   return (
     <div className="min-h-screen bg-slate-100 p-6">
@@ -336,7 +496,7 @@ export default function EstudiantesManager({
         {/* Navigation Tabs */}
         <div className="flex items-center gap-2 mb-6 border-b border-slate-200 pb-3 flex-wrap">
           <button
-            onClick={() => { setActiveTab('estudiantes'); setSelectedCurso(''); setSearchTerm(''); }}
+            onClick={() => { setActiveTab('estudiantes'); setSelectedCurso(''); setSearchTerm(''); setSelectedCourseView(null); }}
             className={`px-4 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 cursor-pointer ${
               activeTab === 'estudiantes'
                 ? 'bg-blue-600 text-white shadow-xs'
@@ -352,7 +512,7 @@ export default function EstudiantesManager({
           </button>
 
           <button
-            onClick={() => { setActiveTab('aspirantes'); setSelectedCurso(''); setSearchTerm(''); }}
+            onClick={() => { setActiveTab('aspirantes'); setSelectedCurso(''); setSearchTerm(''); setSelectedCourseView(null); }}
             className={`px-4 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 cursor-pointer ${
               activeTab === 'aspirantes'
                 ? 'bg-purple-700 text-white shadow-xs'
@@ -368,14 +528,14 @@ export default function EstudiantesManager({
           </button>
 
           <button
-            onClick={() => setActiveTab('cursos')}
+            onClick={() => { setActiveTab('cursos'); setSelectedCourseView(null); fetchCursosData(); }}
             className={`px-4 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 cursor-pointer ${
               activeTab === 'cursos'
                 ? 'bg-slate-800 text-white shadow-xs'
                 : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
             }`}
           >
-            <span>🏫 Cursos ({cursos.length})</span>
+            <span>🏫 Gestión de Cursos ({cursos.length})</span>
           </button>
         </div>
 
@@ -475,9 +635,13 @@ export default function EstudiantesManager({
                         <p className="text-xs text-slate-500 font-mono mt-1">
                           {est.tipoDocumento || 'TI'}: <strong>{est.numeroDocumento}</strong>
                         </p>
-                        {est.curso && (
+                        {est.curso ? (
                           <p className="text-xs text-slate-400 mt-0.5">
                             Curso: <span className="font-semibold text-slate-700">{est.curso}</span>
+                          </p>
+                        ) : (
+                          <p className="text-xs text-amber-600 font-semibold mt-0.5">
+                            ⚠️ Sin Curso Asignado
                           </p>
                         )}
                       </div>
@@ -622,49 +786,352 @@ export default function EstudiantesManager({
           </>
         )}
 
-        {/* ── TAB 3: CURSOS ── */}
+        {/* ── TAB 3: GESTIÓN DE CURSOS Y ASIGNACIÓN DE ESTUDIANTES ── */}
         {activeTab === 'cursos' && (
-          <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6">
-            <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
-              <div>
-                <h2 className="text-lg font-bold text-slate-800">Cursos Registrados en MongoDB</h2>
-                <p className="text-xs text-slate-500">Grados y grupos habilitados para asignar a exámenes y estudiantes</p>
+          <div>
+            {selectedCourseView === null ? (
+              /* Course Grid Overview */
+              <div className="space-y-6">
+                {/* Course Dashboard Bar with Unassigned Students Alert */}
+                <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 flex items-center justify-between gap-4 flex-wrap">
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                      <span>🏫</span>
+                      <span>Organización de Estudiantes por Curso</span>
+                    </h2>
+                    <p className="text-slate-500 text-xs mt-1">
+                      Haz clic en cualquier curso para ver sus estudiantes o asignar nuevos alumnos. Cada estudiante está asignado a un único curso en MongoDB.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-3 flex-wrap">
+                    {/* Botón Destacado: Estudiantes Sin Curso */}
+                    <button
+                      onClick={() => loadCourseStudents('SIN_CURSO')}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-xs border ${
+                        sinCursoCount > 0
+                          ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-600 animate-pulse'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border-slate-300'
+                      }`}
+                    >
+                      <span>⚠️</span>
+                      <span>Estudiantes Sin Curso ({sinCursoCount})</span>
+                    </button>
+
+                    {canEdit && (
+                      <button
+                        onClick={() => setIsCreatingCourse(true)}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <span>+ Agregar Nuevo Curso</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Filter courses input */}
+                <div className="relative max-w-sm">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
+                  <input
+                    type="text"
+                    value={courseSearch}
+                    onChange={e => setCourseSearch(e.target.value)}
+                    placeholder="Filtrar por nombre de curso (ej: 101, Kinder)..."
+                    className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-xl text-xs bg-white focus:bg-white outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                  />
+                </div>
+
+                {/* Courses Grid with Student Count Badges */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {cursos
+                    .filter(c => !courseSearch.trim() || c.nombre.toLowerCase().includes(courseSearch.toLowerCase().trim()))
+                    .map(c => {
+                      const studentCount = Number(c.totalEstudiantes || 0);
+
+                      return (
+                        <div
+                          key={c.nombre}
+                          onClick={() => loadCourseStudents(c.nombre)}
+                          className="bg-white rounded-2xl shadow-sm hover:shadow-md border border-slate-200 hover:border-blue-400 p-5 transition flex flex-col justify-between cursor-pointer group"
+                        >
+                          <div>
+                            <div className="flex items-center justify-between gap-2 mb-2">
+                              <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">
+                                Colegio CNSLG
+                              </span>
+                              <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+                                studentCount > 0
+                                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                  : 'bg-slate-100 text-slate-400'
+                              }`}>
+                                👨‍🎓 {studentCount} {studentCount === 1 ? 'estudiante' : 'estudiantes'}
+                              </span>
+                            </div>
+
+                            <h3 className="text-2xl font-black text-slate-800 group-hover:text-blue-700 transition">
+                              {c.nombre}
+                            </h3>
+                          </div>
+
+                          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-blue-600 font-bold">
+                            <span>Ver y gestionar alumnos</span>
+                            <span className="text-base group-hover:translate-x-1 transition-transform">→</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
               </div>
-              <div className="flex items-center gap-3">
-                <input
-                  type="text"
-                  value={courseSearch}
-                  onChange={e => setCourseSearch(e.target.value)}
-                  placeholder="Filtrar curso..."
-                  className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                {canEdit && (
-                  <button
-                    onClick={() => setIsCreatingCourse(true)}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1 cursor-pointer"
-                  >
-                    <span>+ Agregar Curso</span>
-                  </button>
+            ) : (
+              /* Drilldown View into Specific Course or SIN_CURSO */
+              <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 md:p-8 space-y-6 animate-in fade-in">
+                {/* Course Header & Breadcrumb */}
+                <div className="flex items-center justify-between flex-wrap gap-4 border-b border-slate-100 pb-5">
+                  <div>
+                    <button
+                      onClick={() => { setSelectedCourseView(null); fetchCursosData(); }}
+                      className="text-xs text-blue-600 hover:underline font-bold mb-2 flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>← Volver a Todos los Cursos</span>
+                    </button>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <h2 className="text-2xl font-black text-slate-800">
+                        {selectedCourseView === 'SIN_CURSO'
+                          ? '⚠️ Estudiantes Sin Curso Asignado'
+                          : `🏫 Estudiantes del Curso ${selectedCourseView}`}
+                      </h2>
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                        selectedCourseView === 'SIN_CURSO'
+                          ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                          : 'bg-blue-100 text-blue-900 border border-blue-300'
+                      }`}>
+                        👨‍🎓 {courseStudents.length} estudiantes
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {selectedCourseView !== 'SIN_CURSO' && canEdit && (
+                      <button
+                        onClick={openAssignModal}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <span>➕ Asignar Alumnos Sin Curso</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Filter within course students */}
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <div className="relative flex-1 max-w-sm">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
+                    <input
+                      type="text"
+                      value={innerCourseStudentSearch}
+                      onChange={e => setInnerCourseStudentSearch(e.target.value)}
+                      placeholder="Filtrar alumnos por nombre o documento..."
+                      className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-xl text-xs bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <p className="text-xs text-slate-400 font-medium">
+                    Mostrando <strong>{filteredInnerCourseStudents.length}</strong> de {courseStudents.length} estudiantes
+                  </p>
+                </div>
+
+                {/* Students List in this Course */}
+                {loadingCourseStudents ? (
+                  <div className="text-center py-12 text-slate-400">
+                    <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                    <p className="text-xs">Cargando alumnos del curso...</p>
+                  </div>
+                ) : filteredInnerCourseStudents.length === 0 ? (
+                  <div className="bg-slate-50 rounded-2xl p-10 text-center text-slate-400 border border-slate-200">
+                    <div className="text-4xl mb-2">👨‍🎓</div>
+                    <h3 className="font-bold text-slate-700 text-base mb-1">
+                      {selectedCourseView === 'SIN_CURSO'
+                        ? '¡Excelente! No hay estudiantes sin curso asignado.'
+                        : `No hay estudiantes asignados al Curso ${selectedCourseView}.`}
+                    </h3>
+                    <p className="text-xs text-slate-500 mb-4">
+                      {selectedCourseView !== 'SIN_CURSO' && 'Puedes asignar estudiantes sin curso a este grado con el botón superior.'}
+                    </p>
+                    {selectedCourseView !== 'SIN_CURSO' && canEdit && (
+                      <button
+                        onClick={openAssignModal}
+                        className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-xs hover:bg-emerald-700"
+                      >
+                        Asignar Alumnos Ahora →
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                    {filteredInnerCourseStudents.map(st => (
+                      <div
+                        key={st._id?.toString() || st.numeroDocumento}
+                        className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 flex flex-col justify-between hover:bg-white hover:shadow-sm transition"
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <span className="font-mono text-xs font-bold text-slate-600">
+                              {st.tipoDocumento || 'TI'}: {st.numeroDocumento}
+                            </span>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              st.activo !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+                            }`}>
+                              {st.activo !== false ? 'Activo' : 'Inactivo'}
+                            </span>
+                          </div>
+
+                          <h4 className="font-bold text-slate-900 text-sm leading-snug">
+                            {st.nombreCompleto}
+                          </h4>
+                        </div>
+
+                        {/* Reassign / Move Course Selector */}
+                        {canEdit && (
+                          <div className="mt-4 pt-3 border-t border-slate-200">
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                              Mover / Asignar Curso
+                            </label>
+                            <select
+                              value={st.curso || ''}
+                              onChange={e => handleReassignIndividual(st.numeroDocumento, e.target.value)}
+                              className="w-full border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs bg-white font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                              <option value="">-- Sin Curso --</option>
+                              {cursos.map(c => (
+                                <option key={c.nombre} value={c.nombre}>
+                                  Curso {c.nombre}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              {cursos
-                .filter(c => !courseSearch.trim() || c.nombre.toLowerCase().includes(courseSearch.toLowerCase().trim()))
-                .map(c => (
-                  <div
-                    key={c.nombre}
-                    className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center hover:border-blue-300 transition"
-                  >
-                    <p className="text-xl font-extrabold text-slate-800">{c.nombre}</p>
-                    <p className="text-[11px] text-slate-400 mt-1">Colegio CNSLG</p>
-                  </div>
-                ))}
-            </div>
+            )}
           </div>
         )}
       </div>
+
+      {/* ── MODAL: ASIGNAR ESTUDIANTES SIN CURSO AL CURSO ACTUAL ── */}
+      {isAssignModalOpen && selectedCourseView && selectedCourseView !== 'SIN_CURSO' && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl shadow-2xl p-6 md:p-8 max-w-2xl w-full border border-slate-100 animate-in fade-in zoom-in-95 my-6">
+            <div className="flex justify-between items-start mb-4 pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="font-extrabold text-slate-800 text-xl">
+                  ➕ Asignar Alumnos al Curso {selectedCourseView}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Selecciona de la lista los estudiantes sin curso para vincularlos a este grado.
+                </p>
+              </div>
+              <button
+                onClick={() => setIsAssignModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 text-2xl font-bold leading-none p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between mb-3 text-xs">
+              <span className="font-semibold text-slate-600">
+                Disponibles sin curso: <strong>{unassignedPool.length}</strong>
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedToAssign(unassignedPool.map(u => u.numeroDocumento))}
+                  className="text-blue-600 hover:underline font-bold"
+                >
+                  Seleccionar todos
+                </button>
+                <span className="text-slate-300">•</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedToAssign([])}
+                  className="text-slate-500 hover:underline font-bold"
+                >
+                  Limpiar
+                </button>
+              </div>
+            </div>
+
+            {/* List of Unassigned Students with Checkboxes */}
+            <div className="max-h-72 overflow-y-auto border border-slate-200 rounded-2xl p-2 bg-slate-50 divide-y divide-slate-200/60 shadow-inner">
+              {unassignedPool.length === 0 ? (
+                <p className="text-center py-8 text-xs text-slate-400">
+                  No hay estudiantes sin curso disponibles en este momento.
+                </p>
+              ) : (
+                unassignedPool.map(st => {
+                  const isChecked = selectedToAssign.includes(st.numeroDocumento);
+                  return (
+                    <label
+                      key={st.numeroDocumento}
+                      className={`flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition select-none ${
+                        isChecked ? 'bg-emerald-50 border border-emerald-300 font-bold text-emerald-950' : 'hover:bg-white text-slate-800'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={e => {
+                            if (e.target.checked) {
+                              setSelectedToAssign(prev => [...prev, st.numeroDocumento]);
+                            } else {
+                              setSelectedToAssign(prev => prev.filter(d => d !== st.numeroDocumento));
+                            }
+                          }}
+                          className="w-4 h-4 text-emerald-600 rounded cursor-pointer"
+                        />
+                        <div>
+                          <p className="text-xs font-bold leading-tight">{st.nombreCompleto}</p>
+                          <p className="text-[11px] text-slate-500 font-mono mt-0.5">
+                            Doc: {st.numeroDocumento}
+                          </p>
+                        </div>
+                      </div>
+                      {isChecked && (
+                        <span className="text-[10px] bg-emerald-200 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+                          Seleccionado
+                        </span>
+                      )}
+                    </label>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="flex gap-3 pt-5 border-t border-slate-100 mt-4">
+              <button
+                type="button"
+                onClick={() => setIsAssignModalOpen(false)}
+                className="flex-1 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAssignSelectedToCourse(selectedCourseView)}
+                disabled={assigningBatch || selectedToAssign.length === 0}
+                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow-xs disabled:opacity-50"
+              >
+                {assigningBatch
+                  ? 'Asignando...'
+                  : `Asignar ${selectedToAssign.length} alumno(s) a ${selectedCourseView}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── MODAL: EDITAR / REGISTRAR ESTUDIANTE O ASPIRANTE ── */}
       {(editingStudent || isCreatingStudent || isCreatingAspirante) && (
@@ -740,14 +1207,29 @@ export default function EstudiantesManager({
                   <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
                     {formData.esAdmision ? 'Grado Aspirado' : 'Curso / Grupo'}
                   </label>
-                  <input
-                    type="text"
-                    value={formData.curso}
-                    onChange={e => setFormData(f => ({ ...f, curso: e.target.value, grado: e.target.value }))}
-                    placeholder={formData.esAdmision ? 'Ej: Transición, 1°, 6°' : 'Ej: 101, 602, 1101'}
-                    className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
+                  {formData.esAdmision ? (
+                    <input
+                      type="text"
+                      value={formData.grado}
+                      onChange={e => setFormData(f => ({ ...f, curso: e.target.value, grado: e.target.value }))}
+                      placeholder="Ej: Transición, 1°, 6°"
+                      className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-500"
+                      required
+                    />
+                  ) : (
+                    <select
+                      value={formData.curso}
+                      onChange={e => setFormData(f => ({ ...f, curso: e.target.value, grado: e.target.value }))}
+                      className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
+                    >
+                      <option value="">-- Sin Curso --</option>
+                      {cursos.map(c => (
+                        <option key={c.nombre} value={c.nombre}>
+                          Curso {c.nombre}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Estado</label>
@@ -770,7 +1252,7 @@ export default function EstudiantesManager({
               ) : (
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 font-medium flex items-center gap-2">
                   <span>👨‍🎓</span>
-                  <span>Este alumno está categorizado como <strong>Estudiante Matriculado</strong> y presentará exámenes regulares correspondientes a su curso.</span>
+                  <span>Este alumno está categorizado como <strong>Estudiante Matriculado</strong> y presentará exámenes regulares correspondientes a su curso único.</span>
                 </div>
               )}
 
