@@ -32,6 +32,74 @@ export default function NuevoExamenPage() {
   const [esAdmision, setEsAdmision] = useState(false);
   const [preguntas, setPreguntas] = useState<Pregunta[]>([]);
 
+  // Helper to load mammoth browser library safely
+  async function loadMammoth(): Promise<any> {
+    if (typeof window === 'undefined') return null;
+    if ((window as any).mammoth) return (window as any).mammoth;
+
+    return new Promise((resolve, reject) => {
+      const existing = document.querySelector('script[src="/mammoth.browser.min.js"]');
+      if (existing) {
+        if ((window as any).mammoth) {
+          resolve((window as any).mammoth);
+          return;
+        }
+        existing.addEventListener('load', () => resolve((window as any).mammoth));
+        existing.addEventListener('error', reject);
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = '/mammoth.browser.min.js';
+      script.async = true;
+      script.onload = () => resolve((window as any).mammoth);
+      script.onerror = () => reject(new Error('No se pudo cargar el convertidor de Word'));
+      document.head.appendChild(script);
+    });
+  }
+
+  // Compress image on canvas to avoid Vercel 4.5MB request limit
+  function compressImageInBrowser(dataUri: string, maxWidth = 800, quality = 0.75): Promise<string> {
+    return new Promise((resolve) => {
+      if (typeof window === 'undefined' || !dataUri || !dataUri.startsWith('data:image')) {
+        resolve(dataUri);
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxWidth || height > maxWidth) {
+          if (width > height) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          } else {
+            width = Math.round((width * maxWidth) / height);
+            height = maxWidth;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, width);
+        canvas.height = Math.max(1, height);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(dataUri);
+          return;
+        }
+        // Fill white background for transparent PNGs
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        try {
+          const compressed = canvas.toDataURL('image/jpeg', quality);
+          resolve(compressed);
+        } catch {
+          resolve(dataUri);
+        }
+      };
+      img.onerror = () => resolve(dataUri);
+      img.src = dataUri;
+    });
+  }
+
   // ─── Step 1: Upload and process PDF / DOCX ──────────────────────────────────
   async function handleProcesar() {
     if (!file) return;
@@ -40,23 +108,28 @@ export default function NuevoExamenPage() {
     try {
       let res: Response;
 
-      // For Word (.docx): extract text and images in browser
+      // For Word (.docx): extract text and images in browser with compression
       if (file.name.toLowerCase().endsWith('.docx')) {
         try {
           const arrayBuffer = await file.arrayBuffer();
-          // @ts-expect-error mammoth browser bundle
-          const mammothModule = await import('mammoth/mammoth.browser.js');
-          const mammothBrowser = mammothModule.default || mammothModule;
+          const mammothBrowser = await loadMammoth();
+
+          if (!mammothBrowser) {
+            throw new Error('No se pudo inicializar el convertidor de Word.');
+          }
 
           const imagesMap: Record<string, string> = {};
           let imgCount = 0;
 
           const options = {
             convertImage: mammothBrowser.images.inline(function(element: any) {
-              return element.read("base64").then(function(imageBuffer: string) {
+              return element.read("base64").then(async function(imageBuffer: string) {
                 imgCount++;
                 const placeholder = `[IMAGEN_${imgCount}]`;
-                imagesMap[placeholder] = `data:${element.contentType};base64,${imageBuffer}`;
+                const mime = element.contentType || 'image/jpeg';
+                const rawUri = `data:${mime};base64,${imageBuffer}`;
+                const compressedUri = await compressImageInBrowser(rawUri, 800, 0.75);
+                imagesMap[placeholder] = compressedUri;
                 return { src: placeholder };
               });
             })
@@ -78,18 +151,32 @@ export default function NuevoExamenPage() {
             return;
           }
 
+          const payload = JSON.stringify({
+            texto: textWithPlaceholders,
+            imagenes: imagesMap,
+            esAdmision,
+            nombreArchivo: file.name,
+          });
+
+          // Verify payload is well below Vercel's 4.5MB limit
+          if (payload.length > 4.2 * 1024 * 1024) {
+            setError('El examen contiene demasiadas imágenes de gran tamaño. Intenta reducir su cantidad.');
+            setProcesando(false);
+            return;
+          }
+
           res = await fetch('/api/examenes/procesar-pdf', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              texto: textWithPlaceholders,
-              imagenes: imagesMap,
-              esAdmision,
-              nombreArchivo: file.name,
-            }),
+            body: payload,
           });
-        } catch (docxErr) {
-          console.warn('Fallback a subida normal de archivo:', docxErr);
+        } catch (docxErr: any) {
+          console.warn('Fallo extracción en navegador:', docxErr);
+          if (file.size > 4.2 * 1024 * 1024) {
+            setError(`El archivo pesa ${(file.size / 1024 / 1024).toFixed(1)} MB y supera el límite de Vercel (4.5 MB). No se pudo comprimir en el navegador.`);
+            setProcesando(false);
+            return;
+          }
           const fd = new FormData();
           fd.append('file', file);
           fd.append('esAdmision', esAdmision ? '1' : '0');
@@ -97,6 +184,11 @@ export default function NuevoExamenPage() {
         }
       } else {
         // PDF or other formats
+        if (file.size > 4.2 * 1024 * 1024) {
+          setError(`El archivo PDF pesa ${(file.size / 1024 / 1024).toFixed(1)} MB y supera el límite de Vercel (4.5 MB). Por favor comprímelo o conviértelo a .docx.`);
+          setProcesando(false);
+          return;
+        }
         const fd = new FormData();
         fd.append('file', file);
         fd.append('esAdmision', esAdmision ? '1' : '0');
