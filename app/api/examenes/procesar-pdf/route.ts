@@ -200,7 +200,7 @@ async function extractDocxWithTransforms(buffer: Buffer): Promise<ExtractedDocxR
         // Step 3: High-quality full image & thumbnail
         const fullBuf = await sharpModule(transformedBuffer)
           .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
-          .png()
+          .jpeg({ quality: 80 })
           .toBuffer();
 
         const thumbBuf = await sharpModule(transformedBuffer)
@@ -208,7 +208,7 @@ async function extractDocxWithTransforms(buffer: Buffer): Promise<ExtractedDocxR
           .jpeg({ quality: 70 })
           .toBuffer();
 
-        fullMap[placeholder] = `data:image/png;base64,${fullBuf.toString('base64')}`;
+        fullMap[placeholder] = `data:image/jpeg;base64,${fullBuf.toString('base64')}`;
         thumbnails[placeholder] = { mime: 'image/jpeg', data: thumbBuf.toString('base64') };
       } else {
         fullMap[placeholder] = `data:image/png;base64,${rawBuffer.toString('base64')}`;

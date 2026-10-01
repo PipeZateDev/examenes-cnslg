@@ -65,7 +65,8 @@ export default function NuevoExamenPage() {
     dataUri: string,
     crop?: { l: number; t: number; r: number; b: number } | null,
     transform?: { rotDeg: number; flipH: boolean; flipV: boolean } | null,
-    maxWidth = 800
+    maxWidth = 750,
+    quality = 0.8
   ): Promise<string> {
     return new Promise((resolve) => {
       if (typeof window === 'undefined' || !dataUri || !dataUri.startsWith('data:image')) {
@@ -106,6 +107,7 @@ export default function NuevoExamenPage() {
           return;
         }
 
+        // Fill solid white background so transparent images render cleanly in JPEG
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
@@ -119,7 +121,7 @@ export default function NuevoExamenPage() {
         ctx.restore();
 
         try {
-          const compressed = canvas.toDataURL('image/png');
+          const compressed = canvas.toDataURL('image/jpeg', quality);
           resolve(compressed);
         } catch {
           resolve(dataUri);
@@ -153,7 +155,7 @@ export default function NuevoExamenPage() {
           const docXml = await zip.file('word/document.xml')?.async('string');
           const relsXml = await zip.file('word/_rels/document.xml.rels')?.async('string');
 
-          const imagesMap: Record<string, string> = {};
+          let imagesMap: Record<string, string> = {};
 
           if (docXml && relsXml) {
             const rels: Record<string, string> = {};
@@ -166,6 +168,13 @@ export default function NuevoExamenPage() {
             const drawingRegex = /<w:drawing>([\s\S]*?)<\/w:drawing>/g;
             let dMatch: RegExpExecArray | null;
             let drawCount = 0;
+
+            const drawingsList: Array<{
+              placeholder: string;
+              rawUri: string;
+              crop: { l: number; t: number; r: number; b: number } | null;
+              transform: { rotDeg: number; flipH: boolean; flipV: boolean } | null;
+            }> = [];
 
             while ((dMatch = drawingRegex.exec(docXml)) !== null) {
               drawCount++;
@@ -214,8 +223,12 @@ export default function NuevoExamenPage() {
                 };
               }
 
-              const transformedUri = await transformImageInBrowser(rawUri, crop, transform, 800);
-              imagesMap[placeholder] = transformedUri;
+              drawingsList.push({ placeholder, rawUri, crop, transform });
+            }
+
+            for (const d of drawingsList) {
+              const transformedUri = await transformImageInBrowser(d.rawUri, d.crop, d.transform, 750, 0.8);
+              imagesMap[d.placeholder] = transformedUri;
             }
           }
 
@@ -245,18 +258,27 @@ export default function NuevoExamenPage() {
             return;
           }
 
-          const payload = JSON.stringify({
+          let payload = JSON.stringify({
             texto: textWithPlaceholders,
             imagenes: imagesMap,
             esAdmision,
             nombreArchivo: file.name,
           });
 
-          // Verify payload is well below Vercel's 4.5MB limit
-          if (payload.length > 4.2 * 1024 * 1024) {
-            setError('El examen contiene demasiadas imágenes de gran tamaño. Intenta reducir su cantidad.');
-            setProcesando(false);
-            return;
+          // Adaptive fallback: if payload exceeds 3.8MB, compress further to 500px and 0.65 quality
+          if (payload.length > 3.8 * 1024 * 1024) {
+            console.log('Aplicando compresión adaptativa adicional para reducir peso...');
+            const compressedMap: Record<string, string> = {};
+            for (const [key, val] of Object.entries(imagesMap)) {
+              compressedMap[key] = await transformImageInBrowser(val, null, null, 500, 0.65);
+            }
+            imagesMap = compressedMap;
+            payload = JSON.stringify({
+              texto: textWithPlaceholders,
+              imagenes: imagesMap,
+              esAdmision,
+              nombreArchivo: file.name,
+            });
           }
 
           res = await fetch('/api/examenes/procesar-pdf', {
