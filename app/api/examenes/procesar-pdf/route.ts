@@ -46,9 +46,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No se pudo extraer texto del archivo.' }, { status: 422 });
     }
 
-    // Trim text to avoid token limits (max ~12000 chars)
-    if (textoExamen.length > 12000) {
-      textoExamen = textoExamen.substring(0, 12000) + '\n[... texto truncado ...]';
+    // Do not cut off exams unnecessarily (Gemini easily supports 100k+ chars)
+    if (textoExamen.length > 100000) {
+      textoExamen = textoExamen.substring(0, 100000) + '\n[... texto truncado ...]';
     }
 
     // Call Gemini AI
@@ -57,18 +57,19 @@ export async function POST(req: NextRequest) {
     const prompt = `Eres un asistente especializado en digitalizar exámenes académicos para convertirlos en pruebas digitales evaluables pregunta por pregunta.
 
 Analiza el siguiente texto de un examen y conviértelo en una lista de preguntas digitales estructuradas.
+Sé claro y conciso en los enunciados y opciones.
 Para cada pregunta o actividad del examen:
-- enunciado: redacción clara de la pregunta o instrucción.
-- opciones: array de opciones con "letra" (A, B, C, D) y "texto". Si el examen original no tiene opciones explícitas (por ejemplo actividades de preescolar/kinder, ejercicios de completar o preguntas abiertas), formula opciones pertinentes de selección múltiple que permitan evaluar la actividad.
-- notas: nota explicativa o criterio de evaluación (o null si no hay).
+- enunciado: redacción clara de la pregunta, ejercicio o problema.
+- opciones: array de opciones con "letra" (A, B, C, D) y "texto". Si en el examen original las opciones no tienen letras explícitas o es una lista de ítems, formula o asigna letras A, B, C, D correspondientes.
+- notas: breve criterio de evaluación o null si no hay.
 
-Devuelve SOLO un JSON válido con esta estructura exacta:
+Devuelve estrictamente un JSON válido con esta estructura exacta:
 {
   "titulo": "título del examen",
   "materia": "materia o área",
   "preguntas": [
     {
-      "enunciado": "texto de la pregunta o actividad",
+      "enunciado": "texto de la pregunta",
       "opciones": [
         {"letra": "A", "texto": "opción A"},
         {"letra": "B", "texto": "opción B"},
@@ -85,8 +86,8 @@ ${textoExamen}`;
 
     // Resilient fallback chain for model availability and transient demand spikes
     const modelsToTry = [
-      'gemini-3.8-flash',
       'gemini-3.5-flash',
+      'gemini-3.8-flash',
       'gemini-3-flash-preview',
       'gemini-flash-latest'
     ];
@@ -99,6 +100,10 @@ ${textoExamen}`;
         const response = await ai.models.generateContent({
           model: modelName,
           contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+            maxOutputTokens: 16384,
+          },
         });
         if (response.text) {
           rawText = response.text;
@@ -114,16 +119,8 @@ ${textoExamen}`;
       throw new Error(lastError?.message || 'No se pudo obtener respuesta de ningún modelo de IA');
     }
     
-    // Extract JSON from response
-    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      return NextResponse.json({
-        error: 'No se pudo procesar el examen con IA. Intenta con un archivo más claro.',
-        rawText: rawText.substring(0, 500),
-      }, { status: 422 });
-    }
-
-    const extracted = JSON.parse(jsonMatch[0]);
+    // Resilient JSON parser that handles valid, markdown, and truncated JSON
+    const extracted = repairAndParseQuestionsJson(rawText);
     const preguntas = extracted.preguntas || [];
 
     if (preguntas.length === 0) {
@@ -134,11 +131,7 @@ ${textoExamen}`;
 
     // Add order and auto-weights
     const pesos = distribuirPesos(preguntas.length);
-    const preguntasConOrden = preguntas.map((p: {
-      enunciado: string;
-      opciones: Array<{ letra: string; texto: string }>;
-      notas?: string;
-    }, i: number) => ({
+    const preguntasConOrden = preguntas.map((p, i: number) => ({
       orden: i + 1,
       enunciado: p.enunciado,
       opciones: p.opciones,
@@ -160,4 +153,66 @@ ${textoExamen}`;
     const message = err instanceof Error ? err.message : 'Error desconocido';
     return NextResponse.json({ error: `Error al procesar: ${message}` }, { status: 500 });
   }
+}
+
+interface ExtractedExamen {
+  titulo?: string;
+  materia?: string;
+  preguntas: Array<{
+    enunciado: string;
+    opciones: Array<{ letra: string; texto: string }>;
+    notas?: string | null;
+  }>;
+}
+
+function repairAndParseQuestionsJson(raw: string): ExtractedExamen {
+  // 1. Direct parse attempt
+  try {
+    return JSON.parse(raw);
+  } catch (_) {}
+
+  // 2. Remove markdown wrappers
+  let str = raw.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+  try {
+    return JSON.parse(str);
+  } catch (_) {}
+
+  // 3. If truncated, find last closing brace and close missing array/brackets
+  const lastBrace = str.lastIndexOf('}');
+  if (lastBrace !== -1) {
+    let candidate = str.substring(0, lastBrace + 1);
+    const openBrackets = (candidate.match(/\[/g) || []).length;
+    const closeBrackets = (candidate.match(/\]/g) || []).length;
+    for (let i = 0; i < openBrackets - closeBrackets; i++) {
+      candidate += '\n]';
+    }
+    const openBraces = (candidate.match(/\{/g) || []).length;
+    const closeBraces = (candidate.match(/\}/g) || []).length;
+    for (let i = 0; i < openBraces - closeBraces; i++) {
+      candidate += '\n}';
+    }
+    try {
+      return JSON.parse(candidate);
+    } catch (_) {}
+  }
+
+  // 4. Regex fallback: extract individual questions
+  const questions: ExtractedExamen['preguntas'] = [];
+  const qRegex = /\{\s*"enunciado"\s*:\s*"([^"]+)"[\s\S]*?"opciones"\s*:\s*\[([\s\S]*?)\]\s*(?:,\s*"notas"\s*:\s*([^}]+))?\s*\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = qRegex.exec(str)) !== null) {
+    try {
+      questions.push(JSON.parse(m[0]));
+    } catch (_) {}
+  }
+
+  if (questions.length > 0) {
+    return {
+      titulo: 'Examen de Admisión',
+      materia: 'General',
+      preguntas: questions,
+    };
+  }
+
+  throw new Error('No se pudo interpretar el formato de preguntas devuelto por la IA.');
 }
