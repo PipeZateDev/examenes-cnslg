@@ -98,15 +98,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   return NextResponse.json({ error: 'Acción no válida' }, { status: 400 });
 }
 
-// DELETE /api/examenes/[id] - only admin
+// DELETE /api/examenes/[id] - docentes and above
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await getSessionFromRequest(req);
-  if (!session || !hasRole(session.rol, 'admin')) {
+  if (!session || !hasRole(session.rol, 'docente')) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 
   const db = await getDb();
   await db.collection('ex_examenes').deleteOne({ _id: new ObjectId(id) });
+  await db.collection('ex_intentos').deleteMany({ examenId: id });
   return NextResponse.json({ ok: true });
 }

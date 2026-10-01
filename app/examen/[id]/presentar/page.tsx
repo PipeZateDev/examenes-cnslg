@@ -6,7 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 interface Pregunta {
   orden: number;
   enunciado: string;
-  opciones: { letra: string; texto: string }[];
+  opciones: { letra: string; texto: string; imagen?: string | null }[];
   peso: number;
   area?: string;
   imagen?: string | null;
@@ -215,7 +215,18 @@ export default function PresentarExamenPage() {
                     ${selected ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
                     {opcion.letra}
                   </span>
-                  <span className="leading-relaxed pt-0.5">{opcion.texto}</span>
+                  <div className="flex-1">
+                    {opcion.texto && <span className="leading-relaxed pt-0.5 block font-medium">{opcion.texto}</span>}
+                    {opcion.imagen && (
+                      <div className="mt-2 bg-white p-1.5 rounded-lg border border-slate-200 inline-block shadow-xs">
+                        <img
+                          src={opcion.imagen}
+                          alt={`Opción ${opcion.letra}`}
+                          className="max-h-36 max-w-full rounded object-contain"
+                        />
+                      </div>
+                    )}
+                  </div>
                 </button>
               );
             })}

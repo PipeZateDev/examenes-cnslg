@@ -6,6 +6,7 @@ import { distribuirPesos } from '@/lib/utils';
 export interface Opcion {
   letra: string;
   texto: string;
+  imagen?: string | null;
 }
 
 export interface PreguntaItem {
@@ -319,6 +320,14 @@ export default function ExamenEditorView({
                   />
                 </div>
 
+                {/* AI / Pedagogical review notes */}
+                {p.notas && (
+                  <div className="mb-4 px-3.5 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2 shadow-xs">
+                    <span className="font-bold flex-shrink-0 text-amber-600">💡 Revisión Pedagógica:</span>
+                    <span className="leading-relaxed">{p.notas}</span>
+                  </div>
+                )}
+
                 {/* Diagram / Image if attached */}
                 {p.imagen && (
                   <div className="mb-4 bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col items-center">
@@ -326,7 +335,7 @@ export default function ExamenEditorView({
                     <img
                       src={p.imagen}
                       alt={`Diagrama pregunta ${p.orden}`}
-                      className="max-h-60 object-contain rounded-lg shadow-sm"
+                      className="max-h-60 object-contain rounded-lg shadow-sm bg-white p-1"
                     />
                     <button
                       onClick={() => handleUpdateField(p.orden, 'imagen', null)}
@@ -363,6 +372,17 @@ export default function ExamenEditorView({
                         >
                           {op.letra}
                         </span>
+
+                        {op.imagen && (
+                          <div className="flex-shrink-0 my-1 bg-white p-1 rounded-lg border border-slate-200">
+                            <img
+                              src={op.imagen}
+                              alt={`Opción ${op.letra}`}
+                              className="max-h-24 max-w-[140px] object-contain rounded"
+                            />
+                          </div>
+                        )}
+
                         <input
                           type="text"
                           value={op.texto}
@@ -373,6 +393,7 @@ export default function ExamenEditorView({
                             );
                             handleUpdateField(p.orden, 'opciones', newOps);
                           }}
+                          placeholder={op.imagen ? 'Descripción opcional de la figura...' : `Opción ${op.letra}...`}
                           className={`flex-1 bg-transparent border-0 text-sm focus:outline-none ${
                             isCorrect ? 'text-emerald-950 font-medium' : 'text-slate-800'
                           }`}
@@ -491,7 +512,18 @@ export default function ExamenEditorView({
                       >
                         {op.letra}
                       </span>
-                      <span className="text-sm font-medium">{op.texto}</span>
+                      <div className="flex-1">
+                        {op.texto && <span className="text-sm font-medium block leading-relaxed">{op.texto}</span>}
+                        {op.imagen && (
+                          <div className="mt-2 bg-white p-1 rounded-lg border border-slate-200 inline-block shadow-xs">
+                            <img
+                              src={op.imagen}
+                              alt={`Opción ${op.letra}`}
+                              className="max-h-36 max-w-full rounded object-contain"
+                            />
+                          </div>
+                        )}
+                      </div>
                     </button>
                   );
                 })}

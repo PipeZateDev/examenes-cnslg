@@ -74,42 +74,57 @@ export async function POST(req: NextRequest) {
     // Call Gemini AI
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
     
-    const prompt = `Eres un asistente pedagógico especializado en digitalizar exámenes del Colegio Nuevo San Luis Gonzaga para convertirlos en pruebas digitales evaluables pregunta por pregunta.
+    const prompt = `Eres un asistente pedagógico de élite especializado en digitalizar exámenes del Colegio Nuevo San Luis Gonzaga para convertirlos en pruebas digitales interactivas pregunta por pregunta.
 
-Analiza el siguiente texto de un examen y conviértelo en una lista de preguntas digitales estructuradas.
-${esAdmision ? `IMPORTANTE: Este es un EXAMEN DE ADMISIÓN. Debes clasificar obligatoriamente cada pregunta en una de las 5 ÁREAS BÁSICAS PRINCIPALES:
-- "Matemáticas" (para operaciones, problemas, lógica, secuencias, figuras)
-- "Español" (para lectura, gramática, vocabulario, comprensión)
-- "Ciencias Naturales" (para seres vivos, cuerpo, naturaleza, animales)
-- "Ciencias Sociales" (para comunidad, valores, historia, geografía)
-- "Inglés" (para vocabulario y expresiones en inglés)
-Indica en el campo "area" de cada pregunta el nombre exacto de una de estas 5 áreas.` : `Indica en el campo "area" la materia o área de la pregunta.`}
+Analiza minuciosamente el siguiente texto de un examen y extrae TODAS las preguntas de selección múltiple con la máxima fidelidad pedagógica.
 
-Si en el texto hay referencias a imágenes como [IMAGEN_1], [IMAGEN_2], consérvalas o indícalas en el campo "imagen" (ej: "[IMAGEN_2]").
+REGLAS OBLIGATORIAS:
 
-Sé conciso en los enunciados y opciones.
-Para cada pregunta:
-- enunciado: texto claro de la pregunta.
-- area: nombre del área asignada.
-- opciones: array de opciones con "letra" (A, B, C, D) y "texto".
-- imagen: identificador de imagen si aplica (ej: "[IMAGEN_2]") o null.
-- notas: breve criterio o null.
+1. OMISIÓN DEL ENCABEZADO INSTITUCIONAL:
+   - OMITE COMPLETAMENTE el encabezado del colegio (logo, escudo, nombre "Colegio Nuevo San Luis Gonzaga", fecha, año lectivo, grado, líneas de nombre de estudiante, indicaciones iniciales o rúbricas de presentación).
+   - NUNCA conviertas el encabezado institucional en una pregunta.
+   - Únicamente utiliza esa información para generar un "titulo" descriptivo y limpio (ej: "Examen de Admisión Grado 2° - 2027").
+
+2. IMÁGENES EN PREGUNTAS Y EN OPCIONES (SECUENCIAS, SIMETRÍAS, FIGURAS):
+   - El texto contiene identificadores como [IMAGEN_1], [IMAGEN_2], [IMAGEN_3], etc.
+   - Si una pregunta tiene una imagen de apoyo o diagrama principal (ej: un ábaco, un gráfico, una secuencia inicial), asígnala al campo "imagen" de la pregunta (ej: "[IMAGEN_4]").
+   - Si las OPCIONES de respuesta (A, B, C, D) son imágenes (muy común en secuencias, simetrías, figuras o piezas faltantes):
+     - Asigna el identificador de la imagen correspondiente en el campo "imagen" de cada opción (ej: opción A: "imagen": "[IMAGEN_5]", opción B: "imagen": "[IMAGEN_6]", etc.).
+     - Si la opción no tiene texto adicional, coloca en "texto" una etiqueta clara como "Opción A", "Opción B" o la descripción de la figura.
+     - Si la opción es solo texto sin imagen, coloca "imagen": null.
+
+3. CONTEXTOS, LECTURAS Y SITUACIONES COMPARTIDAS ENTRE VARIAS PREGUNTAS:
+   - Si un texto, lectura, situación o imagen indica que sirve para varias preguntas (por ejemplo: "Lee la siguiente situación y responde las preguntas 16 y 17", o "Con base en la siguiente lectura contesta las preguntas 1 a 3"):
+     DEBES INCLUIR el texto de la situación y la imagen asociada en EL ENUNCIADO DE CADA UNA de esas preguntas (en la 16 y en la 17).
+     De esta forma, cuando el estudiante esté en la pregunta 17, tendrá el texto y la imagen frente a él y no tendrá que retroceder a la pregunta 16.
+
+4. CLASIFICACIÓN EN 5 ÁREAS BÁSICAS (PARA EXÁMENES DE ADMISIÓN):
+   ${esAdmision ? `Este es un EXAMEN DE ADMISIÓN. Clasifica obligatoriamente cada pregunta en el campo "area" con uno de estos 5 valores exactos:
+   - "Matemáticas" (operaciones, problemas, lógica, simetría, secuencias numéricas, conteo)
+   - "Español" (sílabas, oraciones, comprensión lectora, vocabulario, gramática)
+   - "Ciencias Naturales" (cuerpo humano, sentidos, animales, plantas, materia, estados físicos)
+   - "Ciencias Sociales" (familia, comunidad, normas, convivencia, días de la semana, entorno)
+   - "Inglés" (vocabulario, animales, descripciones, partes de la casa)` : `Indica en el campo "area" la asignatura o materia correspondiente.`}
+
+5. REVISIÓN RIGUROSA Y CAMPO "notas":
+   - Extrae rigurosamente todas las preguntas numeradas del documento sin omitir ninguna.
+   - Si detectas alguna ambigüedad, opción faltante, o detalle que el docente deba verificar antes de activar el examen, regístralo brevemente en el campo "notas" de la pregunta para orientar al docente en el editor.
 
 Devuelve estrictamente un JSON válido con esta estructura exacta:
 {
-  "titulo": "título del examen",
+  "titulo": "título limpio del examen",
   "materia": "${esAdmision ? 'Prueba General de Admisión (5 Áreas Básicas)' : 'materia o asignatura'}",
   "preguntas": [
     {
-      "enunciado": "texto de la pregunta",
+      "enunciado": "texto completo de la pregunta (incluyendo la situación compartida si aplica)",
       "area": "${esAdmision ? 'Matemáticas' : 'Materia'}",
+      "imagen": "[IMAGEN_X] o null",
       "opciones": [
-        {"letra": "A", "texto": "opción A"},
-        {"letra": "B", "texto": "opción B"},
-        {"letra": "C", "texto": "opción C"},
-        {"letra": "D", "texto": "opción D"}
+        {"letra": "A", "texto": "texto de opción o Opción A", "imagen": "[IMAGEN_Y] o null"},
+        {"letra": "B", "texto": "texto de opción o Opción B", "imagen": "[IMAGEN_Z] o null"},
+        {"letra": "C", "texto": "texto de opción o Opción C", "imagen": null},
+        {"letra": "D", "texto": "texto de opción o Opción D", "imagen": null}
       ],
-      "imagen": null,
       "notas": null
     }
   ]
@@ -163,6 +178,14 @@ ${textoExamen}`;
       }, { status: 422 });
     }
 
+    // Helper to resolve image placeholder
+    function resolveImg(imgKey: string | null | undefined, text: string): string | null {
+      if (imgKey && imagenesMap[imgKey]) return imagenesMap[imgKey];
+      const m = (text || '').match(/\[IMAGEN_\d+\]/);
+      if (m && imagenesMap[m[0]]) return imagenesMap[m[0]];
+      return null;
+    }
+
     // Weight calculation & image attachment
     // In admissions: Each area sums to 100%!
     // In regular: All questions sum to 100% total!
@@ -170,7 +193,7 @@ ${textoExamen}`;
       orden: number;
       enunciado: string;
       area?: string;
-      opciones: Array<{ letra: string; texto: string }>;
+      opciones: Array<{ letra: string; texto: string; imagen?: string | null }>;
       respuestaCorrecta: null;
       peso: number;
       imagen?: string | null;
@@ -197,20 +220,18 @@ ${textoExamen}`;
       let globalOrden = 1;
       for (const qList of Array.from(areasMap.values())) {
         for (const p of qList) {
-          // Resolve image from imagesMap
-          let imgData: string | null = null;
-          if (p.imagen && imagenesMap[p.imagen]) {
-            imgData = imagenesMap[p.imagen];
-          } else {
-            const m = p.enunciado.match(/\[IMAGEN_\d+\]/);
-            if (m && imagenesMap[m[0]]) imgData = imagenesMap[m[0]];
-          }
+          const imgData = resolveImg(p.imagen, p.enunciado);
+          const opcionesMapeadas = (p.opciones || []).map(op => ({
+            letra: op.letra,
+            texto: (op.texto || '').replace(/\[IMAGEN_\d+\]/g, '').trim(),
+            imagen: resolveImg(op.imagen, op.texto),
+          }));
 
           preguntasFinales.push({
             orden: globalOrden++,
             enunciado: p.enunciado.replace(/\[IMAGEN_\d+\]/g, '').trim(),
             area: p.area || 'General',
-            opciones: p.opciones,
+            opciones: opcionesMapeadas,
             respuestaCorrecta: null,
             peso: (p as { peso?: number }).peso || 20,
             imagen: imgData,
@@ -222,19 +243,18 @@ ${textoExamen}`;
       // Regular exam: 100% distributed evenly across all questions
       const pesos = distribuirPesos(preguntas.length);
       preguntasFinales = preguntas.map((p, i) => {
-        let imgData: string | null = null;
-        if (p.imagen && imagenesMap[p.imagen]) {
-          imgData = imagenesMap[p.imagen];
-        } else {
-          const m = p.enunciado.match(/\[IMAGEN_\d+\]/);
-          if (m && imagenesMap[m[0]]) imgData = imagenesMap[m[0]];
-        }
+        const imgData = resolveImg(p.imagen, p.enunciado);
+        const opcionesMapeadas = (p.opciones || []).map(op => ({
+          letra: op.letra,
+          texto: (op.texto || '').replace(/\[IMAGEN_\d+\]/g, '').trim(),
+          imagen: resolveImg(op.imagen, op.texto),
+        }));
 
         return {
           orden: i + 1,
           enunciado: p.enunciado.replace(/\[IMAGEN_\d+\]/g, '').trim(),
           area: p.area || undefined,
-          opciones: p.opciones,
+          opciones: opcionesMapeadas,
           respuestaCorrecta: null,
           peso: pesos[i],
           imagen: imgData,
@@ -286,7 +306,7 @@ interface ExtractedExamen {
   preguntas: Array<{
     enunciado: string;
     area?: string;
-    opciones: Array<{ letra: string; texto: string }>;
+    opciones: Array<{ letra: string; texto: string; imagen?: string | null }>;
     imagen?: string | null;
     peso?: number;
     notas?: string | null;

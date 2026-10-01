@@ -18,8 +18,9 @@ export interface ExUsuario {
 }
 
 export interface OpcionPregunta {
-  letra: 'A' | 'B' | 'C' | 'D' | 'E';
+  letra: 'A' | 'B' | 'C' | 'D' | 'E' | string;
   texto: string;
+  imagen?: string | null;
 }
 
 export interface Pregunta {
@@ -29,7 +30,8 @@ export interface Pregunta {
   respuestaCorrecta?: 'A' | 'B' | 'C' | 'D' | 'E' | string | null;
   peso: number; // integer, all weights sum to 100 (or 100 per area in admissions)
   area?: string; // Matemáticas, Español, Ciencias Naturales, Ciencias Sociales, Inglés
-  imagen?: string; // base64 or URL
+  imagen?: string | null; // base64 or URL
+  contexto?: string | null;
   notas?: string | null;
 }
 

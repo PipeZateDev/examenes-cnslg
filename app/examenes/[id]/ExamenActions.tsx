@@ -107,14 +107,33 @@ export default function ExamenActions({ examenId, estado, esAdmin, esDirectivo, 
           📊 Ver Resultados
         </Link>
 
-        {/* Delete (admin only) */}
-        {esAdmin && (
+        {/* Delete (docentes and above) */}
+        {esDocente && (
           <button
-            onClick={() => { if (confirm('¿Eliminar este examen permanentemente?')) action('delete'); }}
+            onClick={async () => {
+              if (confirm('¿Estás seguro de eliminar este examen permanentemente? Se eliminarán también los intentos registrados.')) {
+                setLoading('delete');
+                try {
+                  const res = await fetch(`/api/examenes/${examenId}`, {
+                    method: 'DELETE',
+                  });
+                  if (!res.ok) {
+                    const data = await res.json();
+                    setError(data.error || 'Error al eliminar');
+                    return;
+                  }
+                  router.push('/examenes');
+                } catch {
+                  setError('Error de conexión al eliminar');
+                } finally {
+                  setLoading(null);
+                }
+              }
+            }}
             disabled={!!loading}
-            className="px-4 py-2 bg-gray-200 hover:bg-red-100 text-red-600 hover:text-red-700 rounded-lg text-sm font-medium transition disabled:opacity-50"
+            className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 border border-red-200 rounded-lg text-sm font-semibold transition disabled:opacity-50 flex items-center gap-1"
           >
-            🗑 Eliminar
+            {loading === 'delete' ? 'Eliminando...' : '🗑 Eliminar Examen'}
           </button>
         )}
       </div>
