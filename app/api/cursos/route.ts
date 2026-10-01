@@ -215,28 +215,97 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ ok: true });
 }
 
-// DELETE /api/cursos - Delete course
+// DELETE /api/cursos - Delete course (Admin only)
 export async function DELETE(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session || !hasRole(session.rol, 'admin')) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    return NextResponse.json({ error: 'Solo los administradores pueden eliminar cursos' }, { status: 403 });
   }
 
   const { searchParams } = new URL(req.url);
-  const id = searchParams.get('id');
-  if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 });
+  const id = searchParams.get('id')?.trim();
+  const nombreParam = searchParams.get('nombre')?.trim();
+  const courseIdentifier = nombreParam || id;
 
-  const filter = ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { nombre: id };
+  if (!courseIdentifier) {
+    return NextResponse.json({ error: 'ID o nombre del curso requerido' }, { status: 400 });
+  }
 
+  const isObjectId = ObjectId.isValid(courseIdentifier);
+  const filter = isObjectId ? { _id: new ObjectId(courseIdentifier) } : { nombre: courseIdentifier };
+
+  let courseName = courseIdentifier;
+
+  // 1. Find course name before deleting
   try {
     const dbReportes = await getDbReportes();
-    await dbReportes.collection('courses').deleteOne(filter);
+    const found = await dbReportes.collection('courses').findOne(filter);
+    if (found?.nombre) courseName = found.nombre;
+  } catch (_) {}
+
+  const dbExamenes = await getDb();
+  if (courseName === courseIdentifier && isObjectId) {
+    try {
+      const foundEx = await dbExamenes.collection('courses').findOne(filter);
+      if (foundEx?.nombre) courseName = foundEx.nombre;
+    } catch (_) {}
+  }
+
+  const cleanCourseName = String(courseName).trim();
+  const escapedName = cleanCourseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const courseNameRegex = { $regex: `^${escapedName}$`, $options: 'i' };
+
+  // 2. Delete course from courses collection in both DBs
+  try {
+    const dbReportes = await getDbReportes();
+    await dbReportes.collection('courses').deleteMany({
+      $or: [
+        filter,
+        { nombre: courseNameRegex }
+      ]
+    });
   } catch (_) {}
 
   try {
-    const dbExamenes = await getDb();
-    await dbExamenes.collection('courses').deleteOne(filter);
+    await dbExamenes.collection('courses').deleteMany({
+      $or: [
+        filter,
+        { nombre: courseNameRegex }
+      ]
+    });
   } catch (_) {}
 
-  return NextResponse.json({ ok: true });
+  // 3. Unset course on any students assigned to this course (they become unassigned / "Sin Curso")
+  let unassignedCount = 0;
+  try {
+    const dbReportes = await getDbReportes();
+    const resRep = await dbReportes.collection('students').updateMany(
+      { curso: courseNameRegex },
+      { $set: { curso: '', updatedAt: new Date() } }
+    );
+    unassignedCount += resRep.modifiedCount;
+  } catch (_) {}
+
+  try {
+    const resEx = await dbExamenes.collection('students').updateMany(
+      { curso: courseNameRegex },
+      { $set: { curso: '', updatedAt: new Date() } }
+    );
+    unassignedCount += resEx.modifiedCount;
+  } catch (_) {}
+
+  // 4. Remove this course from any exams assigned to it
+  try {
+    await dbExamenes.collection('ex_examenes').updateMany(
+      { cursos: courseNameRegex },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { $pull: { cursos: cleanCourseName } as any }
+    );
+  } catch (_) {}
+
+  return NextResponse.json({
+    ok: true,
+    deletedCourse: cleanCourseName,
+    unassignedStudentsCount: unassignedCount,
+  });
 }

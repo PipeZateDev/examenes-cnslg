@@ -48,6 +48,7 @@ interface ExamenInfo {
   materia?: string;
   esAdmision?: boolean;
   intentosPermitidos?: number;
+  cursos?: string[];
   preguntas: Array<{ orden: number; enunciado: string; area?: string }>;
 }
 
@@ -57,11 +58,27 @@ export default function ResultadosPage() {
   const [habilitaciones, setHabilitaciones] = useState<Habilitacion[]>([]);
   const [examen, setExamen] = useState<ExamenInfo | null>(null);
   const [esDirectivo, setEsDirectivo] = useState(false);
+  const [esAdmin, setEsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Intento | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [filtroTexto, setFiltroTexto] = useState('');
   const [toast, setToast] = useState<{ tipo: 'success' | 'error'; mensaje: string } | null>(null);
+
+  // Reset / Delete Responses State (Admin only)
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [resetScope, setResetScope] = useState<'estudiante' | 'curso' | 'todos'>('estudiante');
+  const [selectedStudentToReset, setSelectedStudentToReset] = useState<string>('');
+  const [selectedCourseToReset, setSelectedCourseToReset] = useState<string>('');
+  const [resettingLoading, setResettingLoading] = useState(false);
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<{
+    tipo: 'intento' | 'estudiante' | 'curso' | 'todos';
+    titulo: string;
+    descripcion: string;
+    intentoId?: string;
+    estudianteId?: string;
+    curso?: string;
+  } | null>(null);
 
   const showToast = (tipo: 'success' | 'error', mensaje: string) => {
     setToast({ tipo, mensaje });
@@ -83,6 +100,7 @@ export default function ResultadosPage() {
         setIntentos(d.intentos || []);
         setHabilitaciones(d.habilitaciones || []);
         setEsDirectivo(!!(d.esDirectivo || d.esAdmin));
+        setEsAdmin(!!d.esAdmin);
       }
     } catch (_) {
       showToast('error', 'Error al cargar los resultados.');
@@ -126,6 +144,45 @@ export default function ResultadosPage() {
       showToast('error', 'Error de conexión al habilitar intento.');
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  // Handle deleting responses / resetting attempts (Admin)
+  const executeDeleteResponses = async (target: {
+    tipo: 'intento' | 'estudiante' | 'curso' | 'todos';
+    intentoId?: string;
+    estudianteId?: string;
+    curso?: string;
+  }) => {
+    setResettingLoading(true);
+    try {
+      const res = await fetch(`/api/examenes/${id}/resultados`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: target.tipo,
+          intentoId: target.intentoId,
+          estudianteId: target.estudianteId,
+          curso: target.curso,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast('error', data.error || 'Error al restablecer respuestas');
+        return;
+      }
+
+      showToast('success', data.mensaje || '✓ Respuestas restablecidas exitosamente.');
+      setDeleteConfirmTarget(null);
+      setIsResetModalOpen(false);
+      if (selected && target.intentoId === selected._id) {
+        setSelected(null);
+      }
+      await loadData();
+    } catch (_) {
+      showToast('error', 'Error de comunicación con el servidor');
+    } finally {
+      setResettingLoading(false);
     }
   };
 
@@ -215,7 +272,20 @@ export default function ResultadosPage() {
             {examen?.materia && <p className="text-slate-500 text-sm mt-0.5">{examen.materia}</p>}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {esAdmin && intentos.length > 0 && (
+              <button
+                onClick={() => {
+                  setSelectedStudentToReset('');
+                  setSelectedCourseToReset('');
+                  setIsResetModalOpen(true);
+                }}
+                className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-700 text-sm font-bold rounded-xl transition border border-red-200 flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <span>🗑️</span>
+                <span>Restablecer Respuestas</span>
+              </button>
+            )}
             <Link
               href={`/examenes/${id}`}
               className="px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-xl transition shadow-xs"
@@ -224,7 +294,7 @@ export default function ResultadosPage() {
             </Link>
             <button
               onClick={loadData}
-              className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium flex items-center gap-1.5 shadow-sm transition"
+              className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium flex items-center gap-1.5 shadow-sm transition cursor-pointer"
             >
               🔄 Actualizar
             </button>
@@ -402,12 +472,12 @@ export default function ResultadosPage() {
                           {intento.enviadoEn ? formatHoraBogota(intento.enviadoEn) : 'En curso'}
                         </td>
 
-                        {/* Actions / 2nd Attempt */}
+                        {/* Actions / 2nd Attempt / Reset */}
                         <td className="px-4 py-3.5 text-center">
                           <div className="flex items-center justify-center gap-2 flex-wrap">
                             <button
                               onClick={() => setSelected(intento)}
-                              className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-xs rounded-lg transition border border-blue-200"
+                              className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-xs rounded-lg transition border border-blue-200 cursor-pointer"
                             >
                               🔍 Ver Respuestas
                             </button>
@@ -419,7 +489,7 @@ export default function ResultadosPage() {
                                   <button
                                     onClick={() => handleHabilitarSegundoIntento(intento.estudianteId, intento.estudianteNombre)}
                                     disabled={actionLoading === intento.estudianteId}
-                                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition shadow-xs flex items-center gap-1 disabled:opacity-50"
+                                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition shadow-xs flex items-center gap-1 disabled:opacity-50 cursor-pointer"
                                     title="Habilitar un segundo intento para este estudiante"
                                   >
                                     {actionLoading === intento.estudianteId ? (
@@ -440,6 +510,34 @@ export default function ResultadosPage() {
                                   </span>
                                 ) : null}
                               </>
+                            )}
+
+                            {/* Reset / Delete Attempt for Admin */}
+                            {esAdmin && (
+                              <button
+                                onClick={() => {
+                                  if (totalIntentosRealizados > 1) {
+                                    setDeleteConfirmTarget({
+                                      tipo: 'intento',
+                                      intentoId: intento._id,
+                                      titulo: `Eliminar ${numIntento}° Intento de ${intento.estudianteNombre}`,
+                                      descripcion: `¿Deseas eliminar únicamente el intento ${numIntento} de ${intento.estudianteNombre} (${intento.estudianteId})?`,
+                                    });
+                                  } else {
+                                    setDeleteConfirmTarget({
+                                      tipo: 'estudiante',
+                                      estudianteId: intento.estudianteId,
+                                      titulo: `Restablecer alumno ${intento.estudianteNombre}`,
+                                      descripcion: `¿Deseas eliminar todas las respuestas e intentos de ${intento.estudianteNombre} (${intento.estudianteId}) en este examen?\n\nEl estudiante podrá volver a iniciar la prueba desde cero (Intento 1).`,
+                                    });
+                                  }
+                                }}
+                                className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded-lg transition border border-red-200 flex items-center gap-1 cursor-pointer"
+                                title={totalIntentosRealizados > 1 ? `Eliminar solo este intento ${numIntento}` : 'Borrar respuestas y restablecer a cero'}
+                              >
+                                <span>🗑️</span>
+                                <span>{totalIntentosRealizados > 1 ? `Borrar ${numIntento}°` : 'Restablecer'}</span>
+                              </button>
                             )}
                           </div>
                         </td>
@@ -559,12 +657,250 @@ export default function ResultadosPage() {
               ))}
             </div>
 
-            <div className="mt-6 pt-4 border-t border-slate-100 text-right">
+            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between">
+              {esAdmin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteConfirmTarget({
+                      tipo: 'intento',
+                      intentoId: selected._id,
+                      titulo: `Eliminar ${selected.intentoNumero || 1}° Intento de ${selected.estudianteNombre}`,
+                      descripcion: `¿Estás seguro de que deseas eliminar este intento de ${selected.estudianteNombre}? Las respuestas marcadas se borrarán y el proceso se restablecerá.`
+                    });
+                  }}
+                  className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-xs rounded-xl transition border border-red-200 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span>🗑️</span>
+                  <span>Eliminar este Intento</span>
+                </button>
+              )}
               <button
                 onClick={() => setSelected(null)}
-                className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-semibold text-sm rounded-xl transition shadow-xs"
+                className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-semibold text-sm rounded-xl transition shadow-xs cursor-pointer ml-auto"
               >
                 Cerrar Detalle
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: RESTABLECER / BORRAR RESPUESTAS DE EXAMEN (ADMIN) ── */}
+      {isResetModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl p-6 md:p-8 max-w-lg w-full border border-slate-100 animate-in zoom-in-95">
+            <div className="flex justify-between items-start mb-4 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center text-xl">
+                  🗑️
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-800 text-lg">
+                    Restablecer Respuestas de Examen
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Borra respuestas para permitir repetir la prueba y sobreescribir intentos.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsResetModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 text-xl font-bold p-1 leading-none cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Scope selector tabs */}
+            <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl mb-5">
+              <button
+                type="button"
+                onClick={() => setResetScope('estudiante')}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  resetScope === 'estudiante'
+                    ? 'bg-white text-slate-800 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                👤 Alumno Específico
+              </button>
+              <button
+                type="button"
+                onClick={() => setResetScope('curso')}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  resetScope === 'curso'
+                    ? 'bg-white text-slate-800 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                🏫 Todo el Curso
+              </button>
+              <button
+                type="button"
+                onClick={() => setResetScope('todos')}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  resetScope === 'todos'
+                    ? 'bg-white text-red-700 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                🌐 Todo el Examen
+              </button>
+            </div>
+
+            {/* Scope 1: Alumno Específico */}
+            {resetScope === 'estudiante' && (
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                    Seleccionar Alumno
+                  </label>
+                  <select
+                    value={selectedStudentToReset}
+                    onChange={e => setSelectedStudentToReset(e.target.value)}
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-xs bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                  >
+                    <option value="">-- Selecciona un estudiante --</option>
+                    {intentosPorEstudiante.map(g => (
+                      <option key={g.estudianteId} value={g.estudianteId}>
+                        {g.estudianteNombre} (Doc: {g.estudianteId} - {g.intentos.length} intento/s)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-2xl text-xs text-blue-900 leading-relaxed">
+                  ℹ️ Se eliminarán todas las respuestas e intentos registrados para este alumno. El estudiante podrá ingresar nuevamente desde la aplicación y empezar desde el intento 1.
+                </div>
+              </div>
+            )}
+
+            {/* Scope 2: Todo el Curso */}
+            {resetScope === 'curso' && (
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                    Seleccionar Curso
+                  </label>
+                  <select
+                    value={selectedCourseToReset}
+                    onChange={e => setSelectedCourseToReset(e.target.value)}
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-xs bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                  >
+                    <option value="">-- Selecciona un curso --</option>
+                    {(examen?.cursos && examen.cursos.length > 0 ? examen.cursos : [
+                      'Kinder', 'Transición', '101', '201', '301', '401', '501',
+                      '601', '701', '801', '901', '1001', '1101', '1102'
+                    ]).map(c => (
+                      <option key={c} value={c}>
+                        Curso {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 leading-relaxed">
+                  ⚠️ <strong>Atención:</strong> Se borrarán las respuestas de <strong>todos los estudiantes</strong> pertenecientes a este curso en esta prueba, restableciendo el contador a 0 intentos para todo el grupo.
+                </div>
+              </div>
+            )}
+
+            {/* Scope 3: Todo el Examen */}
+            {resetScope === 'todos' && (
+              <div className="space-y-4 mb-6">
+                <div className="p-4 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-950 leading-relaxed">
+                  ⚠️ <strong>Restablecimiento Global:</strong> Se borrarán absolutamente todos los intentos ({intentos.length}) y respuestas enviadas para este examen. Todos los estudiantes podrán volver a presentar la prueba desde cero.
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsResetModalOpen(false)}
+                className="flex-1 py-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (resetScope === 'estudiante') {
+                    if (!selectedStudentToReset) {
+                      showToast('error', 'Por favor selecciona un alumno');
+                      return;
+                    }
+                    const st = intentosPorEstudiante.find(g => g.estudianteId === selectedStudentToReset);
+                    setDeleteConfirmTarget({
+                      tipo: 'estudiante',
+                      estudianteId: selectedStudentToReset,
+                      titulo: `Restablecer Alumno ${st?.estudianteNombre || selectedStudentToReset}`,
+                      descripcion: `¿Confirmas que deseas eliminar todas las respuestas e intentos de ${st?.estudianteNombre || selectedStudentToReset}?\n\nEl estudiante podrá iniciar nuevamente la prueba desde cero (Intento 1).`,
+                    });
+                  } else if (resetScope === 'curso') {
+                    if (!selectedCourseToReset) {
+                      showToast('error', 'Por favor selecciona un curso');
+                      return;
+                    }
+                    setDeleteConfirmTarget({
+                      tipo: 'curso',
+                      curso: selectedCourseToReset,
+                      titulo: `Restablecer Curso ${selectedCourseToReset}`,
+                      descripcion: `¿Confirmas que deseas eliminar todas las respuestas de todos los estudiantes del curso ${selectedCourseToReset}?\n\nTodos los alumnos de este curso podrán presentar el examen nuevamente.`,
+                    });
+                  } else {
+                    setDeleteConfirmTarget({
+                      tipo: 'todos',
+                      titulo: `Restablecer Todo el Examen`,
+                      descripcion: `¿Confirmas que deseas eliminar absolutamente todos los intentos (${intentos.length}) de este examen?\n\nTodo el proceso de esta prueba se reiniciará a cero.`,
+                    });
+                  }
+                }}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+              >
+                Continuar →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: CONFIRMACIÓN FINAL DE ELIMINACIÓN DE INTENTOS ── */}
+      {deleteConfirmTarget && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl p-6 md:p-8 max-w-md w-full border border-red-200 animate-in zoom-in-95">
+            <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center text-2xl mx-auto mb-4">
+              🗑️
+            </div>
+            <h3 className="font-extrabold text-slate-900 text-lg text-center mb-2">
+              {deleteConfirmTarget.titulo}
+            </h3>
+            <p className="text-xs text-slate-600 text-center leading-relaxed mb-6 whitespace-pre-line">
+              {deleteConfirmTarget.descripcion}
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmTarget(null)}
+                disabled={resettingLoading}
+                className="flex-1 py-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => executeDeleteResponses(deleteConfirmTarget)}
+                disabled={resettingLoading}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+              >
+                {resettingLoading ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Eliminando...</span>
+                  </>
+                ) : (
+                  <span>Sí, Restablecer</span>
+                )}
               </button>
             </div>
           </div>

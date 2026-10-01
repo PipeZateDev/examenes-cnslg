@@ -90,6 +90,7 @@ export default async function EstudiantesPage({
 
   const totalPages = Math.ceil(total / limit);
   const canEdit = hasRole(session.rol, 'coordinador');
+  const isAdmin = session.rol === 'admin';
 
   return (
     <EstudiantesManager
@@ -104,6 +105,7 @@ export default async function EstudiantesPage({
       query={q}
       cursoFilter={cursoFilter}
       canEdit={canEdit}
+      isAdmin={isAdmin}
     />
   );
 }

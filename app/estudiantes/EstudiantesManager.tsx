@@ -39,6 +39,7 @@ interface EstudiantesManagerProps {
   query: string;
   cursoFilter: string;
   canEdit: boolean;
+  isAdmin?: boolean;
 }
 
 export default function EstudiantesManager({
@@ -53,6 +54,7 @@ export default function EstudiantesManager({
   query,
   cursoFilter,
   canEdit,
+  isAdmin = false,
 }: EstudiantesManagerProps) {
   const [estudiantes, setEstudiantes] = useState<StudentItem[]>(initialEstudiantes);
   const [cursos, setCursos] = useState<CourseItem[]>(initialCursos);
@@ -71,6 +73,10 @@ export default function EstudiantesManager({
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [selectedToAssign, setSelectedToAssign] = useState<string[]>([]);
   const [assigningBatch, setAssigningBatch] = useState(false);
+
+  // Course Deletion State (Admin)
+  const [courseToDelete, setCourseToDelete] = useState<CourseItem | null>(null);
+  const [deletingCourse, setDeletingCourse] = useState(false);
 
   // Modals state
   const [editingStudent, setEditingStudent] = useState<StudentItem | null>(null);
@@ -416,6 +422,43 @@ export default function EstudiantesManager({
       showToast('error', 'Error al crear curso');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const confirmDeleteCourse = async () => {
+    if (!courseToDelete) return;
+    setDeletingCourse(true);
+    try {
+      const identifier = courseToDelete._id || courseToDelete.nombre;
+      const res = await fetch(
+        `/api/cursos?id=${encodeURIComponent(identifier)}&nombre=${encodeURIComponent(courseToDelete.nombre)}`,
+        { method: 'DELETE' }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        showToast('error', data.error || 'Error al eliminar el curso');
+        return;
+      }
+
+      showToast(
+        'success',
+        `✓ Curso ${courseToDelete.nombre} eliminado. ${
+          data.unassignedStudentsCount
+            ? `${data.unassignedStudentsCount} alumno(s) pasaron a "Estudiantes Sin Curso".`
+            : ''
+        }`
+      );
+
+      if (selectedCourseView && selectedCourseView.toLowerCase() === courseToDelete.nombre.toLowerCase()) {
+        setSelectedCourseView(null);
+      }
+
+      setCourseToDelete(null);
+      await fetchCursosData();
+    } catch {
+      showToast('error', 'Error al eliminar el curso');
+    } finally {
+      setDeletingCourse(false);
     }
   };
 
@@ -859,13 +902,28 @@ export default function EstudiantesManager({
                               <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">
                                 Colegio CNSLG
                               </span>
-                              <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
-                                studentCount > 0
-                                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                                  : 'bg-slate-100 text-slate-400'
-                              }`}>
-                                👨‍🎓 {studentCount} {studentCount === 1 ? 'estudiante' : 'estudiantes'}
-                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+                                  studentCount > 0
+                                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                    : 'bg-slate-100 text-slate-400'
+                                }`}>
+                                  👨‍🎓 {studentCount} {studentCount === 1 ? 'estudiante' : 'estudiantes'}
+                                </span>
+                                {isAdmin && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setCourseToDelete(c);
+                                    }}
+                                    title={`Eliminar curso ${c.nombre}`}
+                                    className="p-1 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition cursor-pointer"
+                                  >
+                                    <span className="text-sm">🗑️</span>
+                                  </button>
+                                )}
+                              </div>
                             </div>
 
                             <h3 className="text-2xl font-black text-slate-800 group-hover:text-blue-700 transition">
@@ -917,6 +975,25 @@ export default function EstudiantesManager({
                         className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition shadow-xs flex items-center gap-1.5 cursor-pointer"
                       >
                         <span>➕ Asignar Alumnos Sin Curso</span>
+                      </button>
+                    )}
+
+                    {selectedCourseView !== 'SIN_CURSO' && isAdmin && (
+                      <button
+                        onClick={() => {
+                          const currentC = cursos.find(
+                            c => c.nombre.toLowerCase() === selectedCourseView.toLowerCase()
+                          );
+                          setCourseToDelete({
+                            nombre: selectedCourseView,
+                            _id: currentC?._id,
+                            totalEstudiantes: courseStudents.length,
+                          });
+                        }}
+                        className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded-xl transition border border-red-200 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <span>🗑️</span>
+                        <span>Eliminar Curso</span>
                       </button>
                     )}
                   </div>
@@ -1315,6 +1392,63 @@ export default function EstudiantesManager({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: CONFIRMAR ELIMINACIÓN DE CURSO ── */}
+      {courseToDelete && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl p-6 md:p-8 max-w-md w-full border border-red-100 animate-in zoom-in-95">
+            <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center text-2xl mx-auto mb-4">
+              🗑️
+            </div>
+            <h3 className="font-extrabold text-slate-800 text-xl text-center mb-2">
+              ¿Eliminar Curso {courseToDelete.nombre}?
+            </h3>
+            <p className="text-xs text-slate-600 text-center leading-relaxed mb-4">
+              Esta acción eliminará el curso <strong>{courseToDelete.nombre}</strong> de la base de datos de cursos en MongoDB.
+            </p>
+
+            {(courseToDelete.totalEstudiantes || 0) > 0 ? (
+              <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 mb-5 leading-relaxed">
+                <p className="font-bold flex items-center gap-1.5 mb-1">
+                  <span>⚠️</span>
+                  <span>{courseToDelete.totalEstudiantes} estudiante(s) matriculado(s)</span>
+                </p>
+                Los estudiantes asignados a este curso pasarán automáticamente al listado de <strong>"Estudiantes Sin Curso"</strong> para que puedas reasignarlos a otro grado cuando lo desees.
+              </div>
+            ) : (
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-500 mb-5 text-center">
+                Este curso no tiene alumnos asignados actualmente.
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setCourseToDelete(null)}
+                disabled={deletingCourse}
+                className="flex-1 py-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteCourse}
+                disabled={deletingCourse}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+              >
+                {deletingCourse ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Eliminando...</span>
+                  </>
+                ) : (
+                  <span>Sí, Eliminar Curso</span>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
