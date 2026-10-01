@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import FormattedText from '@/components/FormattedText';
 
 interface Pregunta {
   orden: number;
@@ -267,10 +268,10 @@ export default function PresentarExamenPage() {
             </span>
           </div>
 
-          {/* Enunciado */}
-          <p className="text-slate-800 text-lg md:text-xl leading-relaxed mb-6 whitespace-pre-wrap font-medium">
-            {pregunta.enunciado}
-          </p>
+          {/* Enunciado con soporte de formatos (negrita, subrayado, tamaños y saltos de línea) */}
+          <div className="text-slate-800 text-lg md:text-xl leading-relaxed mb-6 font-medium">
+            <FormattedText text={pregunta.enunciado} />
+          </div>
 
           {/* Question Image / Diagram if present */}
           {pregunta.imagen && (
@@ -306,9 +307,9 @@ export default function PresentarExamenPage() {
                   </span>
                   <div className="flex-1">
                     {opcion.texto && (
-                      <span className="leading-relaxed pt-0.5 block font-medium text-sm md:text-base">
-                        {opcion.texto}
-                      </span>
+                      <div className="leading-relaxed pt-0.5 font-medium text-sm md:text-base">
+                        <FormattedText text={opcion.texto} />
+                      </div>
                     )}
                     {opcion.imagen && (
                       <div className="mt-2 bg-white p-1.5 rounded-lg border border-slate-200 inline-block shadow-xs">

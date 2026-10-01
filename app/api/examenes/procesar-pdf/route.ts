@@ -219,24 +219,41 @@ async function extractDocxWithTransforms(buffer: Buffer): Promise<ExtractedDocxR
     }
   }
 
-  // Use mammoth to extract text with matching [IMAGEN_X] placeholders
+  // Use mammoth to extract text with matching [IMAGEN_X] placeholders and font styles (bold, underline, italic)
   let mammothImgIndex = 0;
   const mammothOptions = {
     convertImage: (mammoth.images as any).inline(function() {
       mammothImgIndex++;
       const ph = `[IMAGEN_${mammothImgIndex}]`;
       return Promise.resolve({ src: ph });
-    })
+    }),
+    styleMap: [
+      "u => u",
+      "b => strong",
+      "i => em",
+      "strike => s"
+    ]
   };
 
   const mammothResult = await mammoth.convertToHtml({ buffer }, mammothOptions);
   const texto = mammothResult.value
     .replace(/<img[^>]*src="(\[IMAGEN_\d+\])"[^>]*>/gi, '\n$1\n')
-    .replace(/<\/p>/gi, '\n')
+    .replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, '\n\n# $1\n\n')
+    .replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, '\n\n## $1\n\n')
+    .replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, '\n\n### $1\n\n')
+    .replace(/<strong>([\s\S]*?)<\/strong>/gi, '**$1**')
+    .replace(/<b>([\s\S]*?)<\/b>/gi, '**$1**')
+    .replace(/<em>([\s\S]*?)<\/em>/gi, '*$1*')
+    .replace(/<i>([\s\S]*?)<\/i>/gi, '*$1*')
+    .replace(/<s>([\s\S]*?)<\/s>/gi, '~~$1~~')
+    .replace(/<\/p>/gi, '\n\n')
     .replace(/<\/li>/gi, '\n')
     .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
+    .replace(/<(?!u|\/u)[^>]+>/g, '') // Strip all other HTML tags except <u> and </u>
     .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 
@@ -322,10 +339,28 @@ export async function POST(req: NextRequest) {
             convertImage: (mammoth.images as any).inline(function() {
               imgIndex++;
               return Promise.resolve({ src: `[IMAGEN_${imgIndex}]` });
-            })
+            }),
+            styleMap: [
+              "u => u",
+              "b => strong",
+              "i => em",
+              "strike => s"
+            ]
           };
           const result = await mammoth.convertToHtml({ buffer }, options);
-          textoExamen = result.value.replace(/<[^>]+>/g, ' ').trim();
+          textoExamen = result.value
+            .replace(/<strong>([\s\S]*?)<\/strong>/gi, '**$1**')
+            .replace(/<b>([\s\S]*?)<\/b>/gi, '**$1**')
+            .replace(/<em>([\s\S]*?)<\/em>/gi, '*$1*')
+            .replace(/<i>([\s\S]*?)<\/i>/gi, '*$1*')
+            .replace(/<s>([\s\S]*?)<\/s>/gi, '~~$1~~')
+            .replace(/<\/p>/gi, '\n')
+            .replace(/<\/li>/gi, '\n')
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<(?!u|\/u)[^>]+>/g, '')
+            .replace(/&nbsp;/g, ' ')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
         }
       } else if (file.name.toLowerCase().endsWith('.doc')) {
         return NextResponse.json({
@@ -370,12 +405,25 @@ REGLAS OBLIGATORIAS:
        Si una opción particular es solo texto (como 'd. Ninguna' o 'd. Ninguna de las anteriores'), deja su "imagen": null y en "texto": "Ninguna".
      - Si una pregunta NO tiene imagen en el documento original, coloca estrictamente "imagen": null. NUNCA generes ni inventes imágenes automáticas ni SVGs.
 
-3. CONTEXTOS, LECTURAS Y SITUACIONES COMPARTIDAS ENTRE VARIAS PREGUNTAS:
+3. PRESERVACIÓN FIDELÍSIMA DE FORMATO DE FUENTE, TAMAÑOS Y SALTOS DE LÍNEA:
+   - SALTOS DE LÍNEA Y PÁRRAFOS:
+     - MANTÉN FIELMENTE todos los saltos de línea (\n), estrofas de poemas, versos, listas, diálogos y párrafos del texto original en el campo "enunciado" y en las "opciones". NUNCA unas todo en un solo párrafo apretado.
+   - NEGRITA Y SUBRAYADO EN PALABRAS DESTACADAS:
+     - Si en el documento original alguna palabra, frase o número del enunciado o de las opciones tiene formato especial (como **Negrita**, <u>Subrayado</u>, o *Cursiva*) porque es una palabra clave o destacada para la pregunta (ejemplos: "NO es correcto", "antónimo de <u>rápido</u>", "palabra **SUBRAYADA**", "significado de la expresión <u>a regañadientes</u>", "¿Cuál de las siguientes opciones **NO** cumple...?", etc.):
+     - DEBES PRESERVAR OBLIGATORIAMENTE ese formato exacto usando:
+       - Negrita: **palabra**
+       - Subrayado: <u>palabra</u>
+       - Cursiva: *palabra*
+     - NUNCA elimines las negritas o subrayados de las palabras destacadas.
+   - TÍTULOS Y TAMAÑOS:
+     - Si una lectura o situación compartida tiene un título destacado, indícalo con encabezado markdown (# Título o ## Subtítulo).
+
+4. CONTEXTOS, LECTURAS Y SITUACIONES COMPARTIDAS ENTRE VARIAS PREGUNTAS:
    - Si un texto, lectura, situación o imagen indica que sirve para varias preguntas (por ejemplo: "Lee la siguiente situación y responde las preguntas 16 y 17", o "Con base en la siguiente lectura contesta las preguntas 1 a 3"):
      DEBES INCLUIR el texto de la situación y la imagen asociada en EL ENUNCIADO DE CADA UNA de esas preguntas (en la 16 y en la 17).
      De esta forma, cuando el estudiante esté en la pregunta 17, tendrá el texto y la imagen frente a él y no tendrá que retroceder a la pregunta 16.
 
-4. CLASIFICACIÓN EN 5 ÁREAS BÁSICAS (PARA EXÁMENES DE ADMISIÓN):
+5. CLASIFICACIÓN EN 5 ÁREAS BÁSICAS (PARA EXÁMENES DE ADMISIÓN):
    ${esAdmision ? `Este es un EXAMEN DE ADMISIÓN. Clasifica obligatoriamente cada pregunta en el campo "area" con uno de estos 5 valores exactos:
    - "Matemáticas" (operaciones, problemas, lógica, simetría, secuencias numéricas, conteo)
    - "Español" (sílabas, oraciones, comprensión lectora, vocabulario, gramática)
@@ -383,7 +431,7 @@ REGLAS OBLIGATORIAS:
    - "Ciencias Sociales" (familia, comunidad, normas, convivencia, días de la semana, entorno)
    - "Inglés" (vocabulario, animales, descripciones, partes de la casa)` : `Indica en el campo "area" la asignatura o materia correspondiente.`}
 
-5. REVISIÓN RIGUROSA Y CAMPO "notas":
+6. REVISIÓN RIGUROSA Y CAMPO "notas":
    - Extrae rigurosamente todas las preguntas numeradas del documento sin omitir ninguna.
    - Si detectas alguna ambigüedad, opción faltante, o detalle que el docente deba verificar antes de activar el examen, regístralo brevemente en el campo "notas" de la pregunta para orientar al docente en el editor.
 
@@ -393,11 +441,11 @@ Devuelve estrictamente un JSON válido con esta estructura exacta:
   "materia": "${esAdmision ? 'Prueba General de Admisión (5 Áreas Básicas)' : 'materia o asignatura'}",
   "preguntas": [
     {
-      "enunciado": "texto completo de la pregunta (incluyendo la situación compartida si aplica)",
+      "enunciado": "texto completo de la pregunta (incluyendo la situación compartida y palabras con formato **negrita** o <u>subrayado</u> si aplica)",
       "area": "${esAdmision ? 'Matemáticas' : 'Materia'}",
       "imagen": "[IMAGEN_X] o null",
       "opciones": [
-        {"letra": "A", "texto": "texto de opción o Opción A", "imagen": "[IMAGEN_Y] o null"},
+        {"letra": "A", "texto": "texto de opción o Opción A (preservando formato si aplica)", "imagen": "[IMAGEN_Y] o null"},
         {"letra": "B", "texto": "texto de opción o Opción B", "imagen": "[IMAGEN_Z] o null"},
         {"letra": "C", "texto": "texto de opción o Opción C", "imagen": null},
         {"letra": "D", "texto": "texto de opción o Opción D", "imagen": null}

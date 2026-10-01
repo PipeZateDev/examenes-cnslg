@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import FormattedText from '@/components/FormattedText';
 
 interface Opcion {
   letra: string;
@@ -238,17 +239,34 @@ export default function NuevoExamenPage() {
               mammothImgIndex++;
               const placeholder = `[IMAGEN_${mammothImgIndex}]`;
               return Promise.resolve({ src: placeholder });
-            })
+            }),
+            styleMap: [
+              "u => u",
+              "b => strong",
+              "i => em",
+              "strike => s"
+            ]
           };
 
           const htmlResult = await mammothBrowser.convertToHtml({ arrayBuffer }, options);
           const textWithPlaceholders = htmlResult.value
             .replace(/<img[^>]*src="(\[IMAGEN_\d+\])"[^>]*>/gi, '\n$1\n')
-            .replace(/<\/p>/gi, '\n')
+            .replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, '\n\n# $1\n\n')
+            .replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, '\n\n## $1\n\n')
+            .replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, '\n\n### $1\n\n')
+            .replace(/<strong>([\s\S]*?)<\/strong>/gi, '**$1**')
+            .replace(/<b>([\s\S]*?)<\/b>/gi, '**$1**')
+            .replace(/<em>([\s\S]*?)<\/em>/gi, '*$1*')
+            .replace(/<i>([\s\S]*?)<\/i>/gi, '*$1*')
+            .replace(/<s>([\s\S]*?)<\/s>/gi, '~~$1~~')
+            .replace(/<\/p>/gi, '\n\n')
             .replace(/<\/li>/gi, '\n')
             .replace(/<br\s*\/?>/gi, '\n')
-            .replace(/<[^>]+>/g, '')
+            .replace(/<(?!u|\/u)[^>]+>/g, '')
             .replace(/&nbsp;/g, ' ')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
             .replace(/\n{3,}/g, '\n\n')
             .trim();
 
@@ -540,8 +558,17 @@ export default function NuevoExamenPage() {
                 value={p.enunciado}
                 onChange={e => updatePregunta(idx, 'enunciado', e.target.value)}
                 rows={3}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-4 focus:ring-2 focus:ring-blue-400 outline-none resize-none"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2 focus:ring-2 focus:ring-blue-400 outline-none resize-none font-mono"
+                placeholder="Enunciado (soporta **negrita**, <u>subrayado</u>, saltos de línea)..."
               />
+              {(p.enunciado.includes('**') || p.enunciado.includes('<u>') || p.enunciado.includes('*') || p.enunciado.includes('\n')) && (
+                <div className="mb-4 p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800">
+                  <span className="font-bold text-slate-500 uppercase tracking-wider block mb-1 text-[10px]">
+                    👁️ Vista previa con formato:
+                  </span>
+                  <FormattedText text={p.enunciado} />
+                </div>
+              )}
 
               {p.imagen && (
                 <div className="mb-4 bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col items-center">

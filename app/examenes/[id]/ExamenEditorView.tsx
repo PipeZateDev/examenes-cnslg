@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { distribuirPesos } from '@/lib/utils';
+import FormattedText from '@/components/FormattedText';
 
 export interface Opcion {
   letra: string;
@@ -658,12 +659,20 @@ export default function ExamenEditorView({
                 {/* Enunciado */}
                 <div className="mb-4">
                   <textarea
-                    rows={2}
+                    rows={3}
                     value={p.enunciado}
                     onChange={e => handleUpdateField(p.orden, 'enunciado', e.target.value)}
-                    className="w-full border border-slate-200 rounded-xl p-3 text-slate-900 text-base font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white"
-                    placeholder="Enunciado de la pregunta..."
+                    className="w-full border border-slate-200 rounded-xl p-3 text-slate-900 text-base font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white font-mono text-sm leading-relaxed"
+                    placeholder="Enunciado de la pregunta (soporta **negrita**, <u>subrayado</u>, saltos de línea y # Títulos)..."
                   />
+                  {(p.enunciado.includes('**') || p.enunciado.includes('<u>') || p.enunciado.includes('*') || p.enunciado.includes('#') || p.enunciado.includes('\n')) && (
+                    <div className="mt-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800">
+                      <span className="font-bold text-slate-500 uppercase tracking-wider block mb-1 text-[10px]">
+                        👁️ Vista previa con formato en vivo:
+                      </span>
+                      <FormattedText text={p.enunciado} />
+                    </div>
+                  )}
                 </div>
 
                 {/* AI / Pedagogical review notes */}
@@ -840,9 +849,9 @@ export default function ExamenEditorView({
               )}
 
               {/* Enunciado */}
-              <p className="text-lg font-medium text-slate-800 mb-6 leading-relaxed whitespace-pre-wrap">
-                {preguntas[previewIdx].enunciado}
-              </p>
+              <div className="text-lg font-medium text-slate-800 mb-6 leading-relaxed">
+                <FormattedText text={preguntas[previewIdx].enunciado} />
+              </div>
 
               {/* Options */}
               <div className="space-y-3">
@@ -871,7 +880,11 @@ export default function ExamenEditorView({
                         {op.letra}
                       </span>
                       <div className="flex-1">
-                        {op.texto && <span className="text-sm font-medium block leading-relaxed">{op.texto}</span>}
+                        {op.texto && (
+                          <div className="text-sm font-medium leading-relaxed">
+                            <FormattedText text={op.texto} />
+                          </div>
+                        )}
                         {op.imagen && (
                           <div className="mt-2 bg-white p-1 rounded-lg border border-slate-200 inline-block shadow-xs">
                             <img
