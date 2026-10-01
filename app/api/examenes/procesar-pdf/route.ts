@@ -3,11 +3,20 @@ import { getSessionFromRequest, hasRole } from '@/lib/auth';
 import { distribuirPesos } from '@/lib/utils';
 import { GoogleGenAI } from '@google/genai';
 
+export const maxDuration = 60; // Allow up to 60s for Gemini AI processing on Vercel
+export const dynamic = 'force-dynamic';
+
 // POST /api/examenes/procesar-pdf
 export async function POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session || !hasRole(session.rol, 'docente')) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+  }
+
+  if (!process.env.GEMINI_API_KEY) {
+    return NextResponse.json({
+      error: 'La variable de entorno GEMINI_API_KEY no está configurada en Vercel. Por favor configúrala en Project Settings > Environment Variables.'
+    }, { status: 500 });
   }
 
   try {

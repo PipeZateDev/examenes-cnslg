@@ -41,15 +41,22 @@ export default function NuevoExamenPage() {
       const fd = new FormData();
       fd.append('file', file);
       const res = await fetch('/api/examenes/procesar-pdf', { method: 'POST', body: fd });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error || 'Error al procesar'); return; }
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch (_) {
+        setError(`Error del servidor (${res.status} ${res.statusText || 'Respuesta no válida'}). Verifica las variables de entorno en Vercel.`);
+        return;
+      }
+
+      if (!res.ok) { setError(data?.error || `Error ${res.status}: no se pudo procesar`); return; }
 
       if (data.titulo) setTitulo(data.titulo);
       if (data.materia) setMateria(data.materia);
       setPreguntas(data.preguntas);
       setStep('review');
-    } catch {
-      setError('Error de conexión al procesar el archivo');
+    } catch (err: any) {
+      setError(`Error de conexión: ${err?.message || 'Verifica tu red o variables en Vercel'}`);
     } finally {
       setProcesando(false);
     }
