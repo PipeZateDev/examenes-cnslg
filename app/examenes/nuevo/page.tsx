@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 interface Opcion {
   letra: string;
   texto: string;
+  imagen?: string | null;
 }
 
 interface Pregunta {
@@ -14,7 +15,9 @@ interface Pregunta {
   opciones: Opcion[];
   respuestaCorrecta: string | null;
   peso: number;
-  notas?: string;
+  area?: string;
+  imagen?: string | null;
+  notas?: string | null;
 }
 
 export default function NuevoExamenPage() {
@@ -57,8 +60,13 @@ export default function NuevoExamenPage() {
     });
   }
 
-  // Compress image on canvas to avoid Vercel 4.5MB request limit
-  function compressImageInBrowser(dataUri: string, maxWidth = 800, quality = 0.75): Promise<string> {
+  // Crop, transform and compress image on canvas in browser
+  function transformImageInBrowser(
+    dataUri: string,
+    crop?: { l: number; t: number; r: number; b: number } | null,
+    transform?: { rotDeg: number; flipH: boolean; flipV: boolean } | null,
+    maxWidth = 800
+  ): Promise<string> {
     return new Promise((resolve) => {
       if (typeof window === 'undefined' || !dataUri || !dataUri.startsWith('data:image')) {
         resolve(dataUri);
@@ -66,30 +74,52 @@ export default function NuevoExamenPage() {
       }
       const img = new Image();
       img.onload = () => {
-        let { width, height } = img;
-        if (width > maxWidth || height > maxWidth) {
-          if (width > height) {
-            height = Math.round((height * maxWidth) / width);
-            width = maxWidth;
-          } else {
-            width = Math.round((width * maxWidth) / height);
-            height = maxWidth;
-          }
+        const nw = img.naturalWidth || img.width;
+        const nh = img.naturalHeight || img.height;
+
+        let sx = 0, sy = 0, sw = nw, sh = nh;
+        if (crop && (crop.l > 0 || crop.t > 0 || crop.r > 0 || crop.b > 0)) {
+          sx = Math.min(nw - 1, Math.max(0, Math.round(nw * crop.l)));
+          sy = Math.min(nh - 1, Math.max(0, Math.round(nh * crop.t)));
+          sw = Math.min(nw - sx, Math.max(1, Math.round(nw * (1 - crop.l - crop.r))));
+          sh = Math.min(nh - sy, Math.max(1, Math.round(nh * (1 - crop.t - crop.b))));
         }
+
+        const scale = Math.min(1, maxWidth / sw, maxWidth / sh);
+        const dw = Math.max(1, Math.round(sw * scale));
+        const dh = Math.max(1, Math.round(sh * scale));
+
+        const rotDeg = transform?.rotDeg || 0;
+        const flipH = transform?.flipH || false;
+        const flipV = transform?.flipV || false;
+
+        const isSideways = rotDeg === 90 || rotDeg === 270;
+        const canvasWidth = isSideways ? dh : dw;
+        const canvasHeight = isSideways ? dw : dh;
+
         const canvas = document.createElement('canvas');
-        canvas.width = Math.max(1, width);
-        canvas.height = Math.max(1, height);
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
           resolve(dataUri);
           return;
         }
-        // Fill white background for transparent PNGs
+
         ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, width, height);
-        ctx.drawImage(img, 0, 0, width, height);
+        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+        ctx.save();
+        ctx.translate(canvasWidth / 2, canvasHeight / 2);
+        if (rotDeg !== 0) ctx.rotate((rotDeg * Math.PI) / 180);
+        if (flipH) ctx.scale(-1, 1);
+        if (flipV) ctx.scale(1, -1);
+
+        ctx.drawImage(img, sx, sy, sw, sh, -dw / 2, -dh / 2, dw, dh);
+        ctx.restore();
+
         try {
-          const compressed = canvas.toDataURL('image/jpeg', quality);
+          const compressed = canvas.toDataURL('image/png');
           resolve(compressed);
         } catch {
           resolve(dataUri);
@@ -108,30 +138,93 @@ export default function NuevoExamenPage() {
     try {
       let res: Response;
 
-      // For Word (.docx): extract text and images in browser with compression
+      // For Word (.docx): extract text and images in browser with crop and transforms
       if (file.name.toLowerCase().endsWith('.docx')) {
         try {
           const arrayBuffer = await file.arrayBuffer();
+          const JSZip = (await import('jszip')).default;
           const mammothBrowser = await loadMammoth();
 
           if (!mammothBrowser) {
             throw new Error('No se pudo inicializar el convertidor de Word.');
           }
 
-          const imagesMap: Record<string, string> = {};
-          let imgCount = 0;
+          const zip = await JSZip.loadAsync(arrayBuffer);
+          const docXml = await zip.file('word/document.xml')?.async('string');
+          const relsXml = await zip.file('word/_rels/document.xml.rels')?.async('string');
 
+          const imagesMap: Record<string, string> = {};
+
+          if (docXml && relsXml) {
+            const rels: Record<string, string> = {};
+            const relRegex = /<Relationship[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"/g;
+            let rMatch: RegExpExecArray | null;
+            while ((rMatch = relRegex.exec(relsXml)) !== null) {
+              rels[rMatch[1]] = rMatch[2];
+            }
+
+            const drawingRegex = /<w:drawing>([\s\S]*?)<\/w:drawing>/g;
+            let dMatch: RegExpExecArray | null;
+            let drawCount = 0;
+
+            while ((dMatch = drawingRegex.exec(docXml)) !== null) {
+              drawCount++;
+              const placeholder = `[IMAGEN_${drawCount}]`;
+              const content = dMatch[1];
+              const blipMatch = content.match(/r:embed="([^"]+)"/);
+              if (!blipMatch) continue;
+
+              const rId = blipMatch[1];
+              const targetPath = rels[rId];
+              if (!targetPath) continue;
+
+              const zipPath = targetPath.startsWith('word/') ? targetPath : `word/${targetPath.replace(/^\//, '')}`;
+              const imgZipFile = zip.file(zipPath);
+              if (!imgZipFile) continue;
+
+              const imgBase64 = await imgZipFile.async('base64');
+              const ext = targetPath.toLowerCase().endsWith('.png') ? 'png' : 'jpeg';
+              const rawUri = `data:image/${ext};base64,${imgBase64}`;
+
+              // Parse crop (<a:srcRect l="38682" t="37182" r="39093" b="25629"/>)
+              const srcRectMatch = content.match(/<a:srcRect([^>]*)\/?>/);
+              let crop: { l: number; t: number; r: number; b: number } | null = null;
+              if (srcRectMatch) {
+                const lMatch = srcRectMatch[1].match(/\bl="(\d+)"/);
+                const tMatch = srcRectMatch[1].match(/\bt="(\d+)"/);
+                const rMatch = srcRectMatch[1].match(/\br="(\d+)"/);
+                const bMatch = srcRectMatch[1].match(/\bb="(\d+)"/);
+                crop = {
+                  l: lMatch ? parseInt(lMatch[1], 10) / 100000 : 0,
+                  t: tMatch ? parseInt(tMatch[1], 10) / 100000 : 0,
+                  r: rMatch ? parseInt(rMatch[1], 10) / 100000 : 0,
+                  b: bMatch ? parseInt(bMatch[1], 10) / 100000 : 0,
+                };
+              }
+
+              // Parse transform (<a:xfrm rot="10800000" flipH="1" flipV="1">)
+              const xfrmMatch = content.match(/<a:xfrm([^>]*)>/);
+              let transform: { rotDeg: number; flipH: boolean; flipV: boolean } | null = null;
+              if (xfrmMatch) {
+                const rotMatch = xfrmMatch[1].match(/\brot="(\d+)"/);
+                transform = {
+                  rotDeg: rotMatch ? Math.round(parseInt(rotMatch[1], 10) / 60000) : 0,
+                  flipH: /\bflipH="1"/.test(xfrmMatch[1]),
+                  flipV: /\bflipV="1"/.test(xfrmMatch[1]),
+                };
+              }
+
+              const transformedUri = await transformImageInBrowser(rawUri, crop, transform, 800);
+              imagesMap[placeholder] = transformedUri;
+            }
+          }
+
+          let mammothImgIndex = 0;
           const options = {
-            convertImage: mammothBrowser.images.inline(function(element: any) {
-              return element.read("base64").then(async function(imageBuffer: string) {
-                imgCount++;
-                const placeholder = `[IMAGEN_${imgCount}]`;
-                const mime = element.contentType || 'image/jpeg';
-                const rawUri = `data:${mime};base64,${imageBuffer}`;
-                const compressedUri = await compressImageInBrowser(rawUri, 800, 0.75);
-                imagesMap[placeholder] = compressedUri;
-                return { src: placeholder };
-              });
+            convertImage: mammothBrowser.images.inline(function() {
+              mammothImgIndex++;
+              const placeholder = `[IMAGEN_${mammothImgIndex}]`;
+              return Promise.resolve({ src: placeholder });
             })
           };
 
@@ -139,6 +232,7 @@ export default function NuevoExamenPage() {
           const textWithPlaceholders = htmlResult.value
             .replace(/<img[^>]*src="(\[IMAGEN_\d+\])"[^>]*>/gi, '\n$1\n')
             .replace(/<\/p>/gi, '\n')
+            .replace(/<\/li>/gi, '\n')
             .replace(/<br\s*\/?>/gi, '\n')
             .replace(/<[^>]+>/g, '')
             .replace(/&nbsp;/g, ' ')
@@ -427,6 +521,16 @@ export default function NuevoExamenPage() {
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-4 focus:ring-2 focus:ring-blue-400 outline-none resize-none"
               />
 
+              {p.imagen && (
+                <div className="mb-4 bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col items-center">
+                  <img
+                    src={p.imagen}
+                    alt={`Diagrama pregunta ${idx + 1}`}
+                    className="max-h-48 object-contain rounded-lg bg-white p-1"
+                  />
+                </div>
+              )}
+
               <div className="space-y-2 mb-4">
                 {p.opciones.map(op => (
                   <div key={op.letra} className={`flex items-center gap-3 p-2 rounded-lg border ${p.respuestaCorrecta === op.letra ? 'border-green-400 bg-green-50' : 'border-gray-200'}`}>
@@ -437,12 +541,22 @@ export default function NuevoExamenPage() {
                     >
                       {op.letra}
                     </button>
+                    {op.imagen && (
+                      <div className="flex-shrink-0 my-1 bg-white p-1 rounded-lg border border-slate-200">
+                        <img
+                          src={op.imagen}
+                          alt={`Opción ${op.letra}`}
+                          className="max-h-16 max-w-[120px] object-contain rounded"
+                        />
+                      </div>
+                    )}
                     <input
                       value={op.texto}
                       onChange={e => {
                         const newOpciones = p.opciones.map(o => o.letra === op.letra ? { ...o, texto: e.target.value } : o);
                         updatePregunta(idx, 'opciones', newOpciones);
                       }}
+                      placeholder={op.imagen ? 'Descripción o figura...' : `Opción ${op.letra}...`}
                       className="flex-1 border-0 bg-transparent text-sm focus:outline-none"
                     />
                   </div>

@@ -95,6 +95,154 @@ async function extractImagesFromPdf(buffer: Buffer): Promise<ExtractedImagesResu
   return { fullMap, thumbnails };
 }
 
+interface ExtractedDocxResult {
+  texto: string;
+  fullMap: Record<string, string>;
+  thumbnails: Record<string, { mime: string; data: string }>;
+}
+
+async function extractDocxWithTransforms(buffer: Buffer): Promise<ExtractedDocxResult> {
+  const JSZip = (await import('jszip')).default;
+  const mammoth = (await import('mammoth')).default;
+  let sharpModule: any = null;
+  try {
+    sharpModule = (await import('sharp')).default;
+  } catch (e) {
+    console.warn('sharp no disponible:', e);
+  }
+
+  const zip = await JSZip.loadAsync(buffer);
+  const docXml = await zip.file('word/document.xml')?.async('string');
+  const relsXml = await zip.file('word/_rels/document.xml.rels')?.async('string');
+
+  if (!docXml || !relsXml) {
+    throw new Error('Documento docx inválido o sin estructura OpenXML.');
+  }
+
+  // Parse relationships
+  const rels: Record<string, string> = {};
+  const relRegex = /<Relationship[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"/g;
+  let rMatch: RegExpExecArray | null;
+  while ((rMatch = relRegex.exec(relsXml)) !== null) {
+    rels[rMatch[1]] = rMatch[2];
+  }
+
+  const fullMap: Record<string, string> = {};
+  const thumbnails: Record<string, { mime: string; data: string }> = {};
+  let count = 0;
+
+  // Track drawings in exact document.xml sequence
+  const drawingRegex = /<w:drawing>([\s\S]*?)<\/w:drawing>/g;
+  let dMatch: RegExpExecArray | null;
+
+  while ((dMatch = drawingRegex.exec(docXml)) !== null) {
+    count++;
+    const placeholder = `[IMAGEN_${count}]`;
+    const content = dMatch[1];
+    const blipMatch = content.match(/r:embed="([^"]+)"/);
+    if (!blipMatch) continue;
+
+    const rId = blipMatch[1];
+    const targetPath = rels[rId];
+    if (!targetPath) continue;
+
+    const zipPath = targetPath.startsWith('word/') ? targetPath : `word/${targetPath.replace(/^\//, '')}`;
+    const rawBuffer = await zip.file(zipPath)?.async('nodebuffer');
+    if (!rawBuffer) continue;
+
+    // Parse crop parameters (<a:srcRect l="38682" t="37182" r="39093" b="25629"/>)
+    const srcRectMatch = content.match(/<a:srcRect([^>]*)\/?>/);
+    let l = 0, t = 0, r = 0, b = 0;
+    if (srcRectMatch) {
+      const lMatch = srcRectMatch[1].match(/\bl="(\d+)"/);
+      const tMatch = srcRectMatch[1].match(/\bt="(\d+)"/);
+      const rMatch = srcRectMatch[1].match(/\br="(\d+)"/);
+      const bMatch = srcRectMatch[1].match(/\bb="(\d+)"/);
+      if (lMatch) l = parseInt(lMatch[1], 10) / 100000;
+      if (tMatch) t = parseInt(tMatch[1], 10) / 100000;
+      if (rMatch) r = parseInt(rMatch[1], 10) / 100000;
+      if (bMatch) b = parseInt(bMatch[1], 10) / 100000;
+    }
+
+    // Parse transform (<a:xfrm rot="10800000" flipH="1" flipV="1">)
+    const xfrmMatch = content.match(/<a:xfrm([^>]*)>/);
+    let rotDeg = 0;
+    let flipH = false;
+    let flipV = false;
+    if (xfrmMatch) {
+      const rotMatch = xfrmMatch[1].match(/\brot="(\d+)"/);
+      if (rotMatch) rotDeg = Math.round(parseInt(rotMatch[1], 10) / 60000);
+      if (/\bflipH="1"/.test(xfrmMatch[1])) flipH = true;
+      if (/\bflipV="1"/.test(xfrmMatch[1])) flipV = true;
+    }
+
+    try {
+      if (sharpModule) {
+        const meta = await sharpModule(rawBuffer).metadata();
+        let step1Buffer = rawBuffer;
+
+        // Step 1: Crop precisely according to teacher's crop in Word
+        if (meta.width && meta.height && (l > 0 || t > 0 || r > 0 || b > 0)) {
+          const left = Math.min(meta.width - 1, Math.max(0, Math.round(meta.width * l)));
+          const top = Math.min(meta.height - 1, Math.max(0, Math.round(meta.height * t)));
+          const width = Math.min(meta.width - left, Math.max(1, Math.round(meta.width * (1 - l - r))));
+          const height = Math.min(meta.height - top, Math.max(1, Math.round(meta.height * (1 - t - b))));
+          step1Buffer = await sharpModule(rawBuffer).extract({ left, top, width, height }).toBuffer();
+        }
+
+        // Step 2: Apply rotation and flips
+        let step2Pipeline = sharpModule(step1Buffer);
+        if (flipH) step2Pipeline = step2Pipeline.flop();
+        if (flipV) step2Pipeline = step2Pipeline.flip();
+        if (rotDeg !== 0) step2Pipeline = step2Pipeline.rotate(rotDeg);
+        const transformedBuffer = await step2Pipeline.toBuffer();
+
+        // Step 3: High-quality full image & thumbnail
+        const fullBuf = await sharpModule(transformedBuffer)
+          .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
+          .png()
+          .toBuffer();
+
+        const thumbBuf = await sharpModule(transformedBuffer)
+          .resize(350, 350, { fit: 'inside', withoutEnlargement: true })
+          .jpeg({ quality: 70 })
+          .toBuffer();
+
+        fullMap[placeholder] = `data:image/png;base64,${fullBuf.toString('base64')}`;
+        thumbnails[placeholder] = { mime: 'image/jpeg', data: thumbBuf.toString('base64') };
+      } else {
+        fullMap[placeholder] = `data:image/png;base64,${rawBuffer.toString('base64')}`;
+        thumbnails[placeholder] = { mime: 'image/png', data: rawBuffer.toString('base64') };
+      }
+    } catch (err) {
+      console.warn(`Error procesando recorte/transform de ${placeholder}:`, (err as Error).message);
+    }
+  }
+
+  // Use mammoth to extract text with matching [IMAGEN_X] placeholders
+  let mammothImgIndex = 0;
+  const mammothOptions = {
+    convertImage: (mammoth.images as any).inline(function() {
+      mammothImgIndex++;
+      const ph = `[IMAGEN_${mammothImgIndex}]`;
+      return Promise.resolve({ src: ph });
+    })
+  };
+
+  const mammothResult = await mammoth.convertToHtml({ buffer }, mammothOptions);
+  const texto = mammothResult.value
+    .replace(/<img[^>]*src="(\[IMAGEN_\d+\])"[^>]*>/gi, '\n$1\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return { texto, fullMap, thumbnails };
+}
+
 // POST /api/examenes/procesar-pdf
 export async function POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
@@ -161,55 +309,24 @@ export async function POST(req: NextRequest) {
         mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
         file.name.toLowerCase().endsWith('.docx')
       ) {
-        const mammoth = await import('mammoth');
-        let imgIndex = 0;
-        let sharpModule: any = null;
         try {
-          sharpModule = (await import('sharp')).default;
-        } catch (_) {}
-
-        const options = {
-          convertImage: (mammoth.images as any).imgElement(function(element: any) {
-            return element.read("base64").then(async function(imageBuffer: string) {
+          const docxResult = await extractDocxWithTransforms(buffer);
+          textoExamen = docxResult.texto;
+          imagenesMap = docxResult.fullMap;
+          imagenesThumbnails = docxResult.thumbnails;
+        } catch (docxErr) {
+          console.warn('Error al extraer docx con transforms:', docxErr);
+          const mammoth = (await import('mammoth')).default;
+          let imgIndex = 0;
+          const options = {
+            convertImage: (mammoth.images as any).inline(function() {
               imgIndex++;
-              const placeholder = `[IMAGEN_${imgIndex}]`;
-              const mime = element.contentType || 'image/jpeg';
-              let dataUri = `data:${mime};base64,${imageBuffer}`;
-              let thumbData = imageBuffer;
-
-              if (sharpModule) {
-                try {
-                  const raw = Buffer.from(imageBuffer, 'base64');
-                  const resized = await sharpModule(raw)
-                    .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
-                    .jpeg({ quality: 80 })
-                    .toBuffer();
-                  dataUri = `data:${mime};base64,${resized.toString('base64')}`;
-
-                  const thumb = await sharpModule(raw)
-                    .resize(350, 350, { fit: 'inside', withoutEnlargement: true })
-                    .jpeg({ quality: 70 })
-                    .toBuffer();
-                  thumbData = thumb.toString('base64');
-                } catch (_) {}
-              }
-
-              imagenesMap[placeholder] = dataUri;
-              imagenesThumbnails[placeholder] = { mime, data: thumbData };
-              return { src: placeholder };
-            });
-          })
-        };
-
-        const result = await mammoth.convertToHtml({ buffer }, options);
-        textoExamen = result.value
-          .replace(/<img[^>]*src="(\[IMAGEN_\d+\])"[^>]*>/gi, '\n$1\n')
-          .replace(/<\/p>/gi, '\n')
-          .replace(/<br\s*\/?>/gi, '\n')
-          .replace(/<[^>]+>/g, '')
-          .replace(/&nbsp;/g, ' ')
-          .replace(/\n{3,}/g, '\n\n')
-          .trim();
+              return Promise.resolve({ src: `[IMAGEN_${imgIndex}]` });
+            })
+          };
+          const result = await mammoth.convertToHtml({ buffer }, options);
+          textoExamen = result.value.replace(/<[^>]+>/g, ' ').trim();
+        }
       } else if (file.name.toLowerCase().endsWith('.doc')) {
         return NextResponse.json({
           error: 'El formato .doc antiguo no está soportado. Por favor convierte el archivo a .docx o PDF.'
@@ -247,8 +364,11 @@ REGLAS OBLIGATORIAS:
    - Te he adjuntado visualmente cada una de las imágenes extraídas del archivo etiquetadas con su identificador [IMAGEN_X].
    - MIRA atentamente el contenido visual de cada [IMAGEN_X] y el enunciado de cada pregunta:
      - Asocia a cada pregunta o a sus opciones la imagen real que CORRESPONDA DIRECTAMENTE a su contenido temático (ej: la imagen del ábaco al problema del ábaco, la imagen de bombas/globos al problema de globos, la imagen de simetría al problema de simetría, la imagen de calzado a la familia de palabras de zapatos, la imagen de plantas al problema de plantas, etc.).
-     - Si las opciones de respuesta (A, B, C, D) tienen imágenes de figuras o piezas, asigna a cada opción su [IMAGEN_Y] correspondiente.
-     - Si una pregunta NO tiene imagen en el documento original, coloca estrictamente "imagen": null. NUNCA generes ni inventes imágenes automáticas.
+     - IMPORTANTÍSIMO - IMÁGENES EN OPCIONES DE RESPUESTA:
+       Si las opciones de respuesta (A, B, C, D) de una pregunta contienen figuras, diagramas, piezas gráficas o imágenes en vez de texto (por ejemplo, en preguntas de simetría como la pregunta 4, secuencias gráficas o figuras geométricas donde las opciones 'a.', 'b.', 'c.' son figuras o imágenes), DEBES asignar a cada opción correspondiente su respectivo [IMAGEN_X] en el campo "imagen" del objeto en el arreglo "opciones".
+       Si la opción solo tiene la figura/imagen, asigna en "texto" algo limpio como "Opción A" o la letra, y en "imagen" el identificador "[IMAGEN_X]".
+       Si una opción particular es solo texto (como 'd. Ninguna' o 'd. Ninguna de las anteriores'), deja su "imagen": null y en "texto": "Ninguna".
+     - Si una pregunta NO tiene imagen en el documento original, coloca estrictamente "imagen": null. NUNCA generes ni inventes imágenes automáticas ni SVGs.
 
 3. CONTEXTOS, LECTURAS Y SITUACIONES COMPARTIDAS ENTRE VARIAS PREGUNTAS:
    - Si un texto, lectura, situación o imagen indica que sirve para varias preguntas (por ejemplo: "Lee la siguiente situación y responde las preguntas 16 y 17", o "Con base en la siguiente lectura contesta las preguntas 1 a 3"):
@@ -393,14 +513,25 @@ ${textoExamen}`;
 
     // Helper to resolve image placeholder
     function resolveImg(imgKey: string | null | undefined, text: string): string | null {
-      if (imgKey) {
+      if (imgKey && typeof imgKey === 'string') {
         const trimmed = imgKey.trim();
+        if (trimmed.startsWith('data:image/')) return trimmed;
         if (imagenesMap[trimmed]) return imagenesMap[trimmed];
-        const m1 = trimmed.match(/\[IMAGEN_\d+\]/);
-        if (m1 && imagenesMap[m1[0]]) return imagenesMap[m1[0]];
+        const withBrackets = `[${trimmed.replace(/^[\[\(]+|[\]\)]+$/g, '')}]`;
+        if (imagenesMap[withBrackets]) return imagenesMap[withBrackets];
+        const m1 = trimmed.match(/\[?IMAGEN_(\d+)\]?/i);
+        if (m1) {
+          const standardKey = `[IMAGEN_${parseInt(m1[1], 10)}]`;
+          if (imagenesMap[standardKey]) return imagenesMap[standardKey];
+        }
       }
-      const m = (text || '').match(/\[IMAGEN_\d+\]/);
-      if (m && imagenesMap[m[0]]) return imagenesMap[m[0]];
+      if (text && typeof text === 'string') {
+        const m = text.match(/\[?IMAGEN_(\d+)\]?/i);
+        if (m) {
+          const standardKey = `[IMAGEN_${parseInt(m[1], 10)}]`;
+          if (imagenesMap[standardKey]) return imagenesMap[standardKey];
+        }
+      }
       return null;
     }
 
