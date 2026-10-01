@@ -18,11 +18,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     { _id: new ObjectId(id), estado: 'activo' },
     {
       projection: {
-        titulo: 1, materia: 1, duracionMinutos: 1,
+        titulo: 1, materia: 1, duracionMinutos: 1, esAdmision: 1,
         'preguntas.orden': 1,
         'preguntas.enunciado': 1,
         'preguntas.opciones': 1,
         'preguntas.peso': 1,
+        'preguntas.imagen': 1,
+        'preguntas.area': 1,
         // respuestaCorrecta is intentionally excluded
       }
     }

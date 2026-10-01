@@ -43,18 +43,66 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     orden: number;
     respuestaCorrecta: string;
     peso: number;
+    area?: string;
   }) => {
     const opcionSeleccionada = respuestas[p.orden] || null;
     const esCorrecta = opcionSeleccionada !== null && opcionSeleccionada === p.respuestaCorrecta;
-    const puntajeObtenido = esCorrecta ? p.peso : 0;
+    const puntajeObtenido = esCorrecta ? (p.peso || 0) : 0;
     calificacionFinal += puntajeObtenido;
     return {
       preguntaOrden: p.orden,
       opcionSeleccionada,
       esCorrecta,
       puntajeObtenido,
+      area: p.area || 'General',
     };
   });
+
+  // Calculate calificacionesPorArea if esAdmision
+  let calificacionesPorArea: Array<{
+    area: string;
+    puntaje: number;
+    correctas: number;
+    totalPreguntas: number;
+  }> = [];
+
+  if (examen.esAdmision) {
+    const areasMap = new Map<string, { total: number; correctas: number; pesoTotal: number; pesoObtenido: number }>();
+    for (const p of examen.preguntas) {
+      const a = p.area || 'General';
+      if (!areasMap.has(a)) {
+        areasMap.set(a, { total: 0, correctas: 0, pesoTotal: 0, pesoObtenido: 0 });
+      }
+      const item = areasMap.get(a)!;
+      item.total += 1;
+      item.pesoTotal += (p.peso || 0);
+      const opcionSeleccionada = respuestas[p.orden] || null;
+      if (opcionSeleccionada !== null && opcionSeleccionada === p.respuestaCorrecta) {
+        item.correctas += 1;
+        item.pesoObtenido += (p.peso || 0);
+      }
+    }
+
+    calificacionesPorArea = Array.from(areasMap.entries()).map(([area, data]) => {
+      // Score in percentage (0 to 100%)
+      const puntaje = data.pesoTotal > 0
+        ? Math.round((data.pesoObtenido / data.pesoTotal) * 100)
+        : (data.total > 0 ? Math.round((data.correctas / data.total) * 100) : 0);
+      return {
+        area,
+        puntaje,
+        correctas: data.correctas,
+        totalPreguntas: data.total,
+      };
+    });
+
+    // Calificación final is average of the areas (0 to 100)
+    if (calificacionesPorArea.length > 0) {
+      calificacionFinal = Math.round(
+        calificacionesPorArea.reduce((sum, a) => sum + a.puntaje, 0) / calificacionesPorArea.length
+      );
+    }
+  }
 
   // Update intento as submitted
   await db.collection('ex_intentos').updateOne(
@@ -65,9 +113,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         enviadoEn: new Date(),
         respuestas: respuestasGraded,
         calificacionFinal,
+        ...(examen.esAdmision ? { calificacionesPorArea } : {}),
       },
     }
   );
 
-  return NextResponse.json({ ok: true, calificacionFinal });
+  return NextResponse.json({ ok: true, calificacionFinal, calificacionesPorArea });
 }

@@ -26,9 +26,11 @@ export interface Pregunta {
   orden: number;
   enunciado: string;
   opciones: OpcionPregunta[];
-  respuestaCorrecta: 'A' | 'B' | 'C' | 'D' | 'E';
-  peso: number; // integer, all weights sum to 100
+  respuestaCorrecta?: 'A' | 'B' | 'C' | 'D' | 'E' | string | null;
+  peso: number; // integer, all weights sum to 100 (or 100 per area in admissions)
+  area?: string; // Matemáticas, Español, Ciencias Naturales, Ciencias Sociales, Inglés
   imagen?: string; // base64 or URL
+  notas?: string | null;
 }
 
 export type EstadoExamen = 
@@ -68,6 +70,13 @@ export interface RespuestaIntento {
   puntajeObtenido?: number;
 }
 
+export interface CalificacionArea {
+  area: string;
+  puntaje: number;          // 0 - 100%
+  totalPreguntas: number;
+  correctas: number;
+}
+
 export interface ExIntento {
   _id?: string;
   examenId: string;
@@ -79,6 +88,7 @@ export interface ExIntento {
   enviadoEn?: Date;
   respuestas: RespuestaIntento[];
   calificacionFinal?: number;  // 0-100
+  calificacionesPorArea?: CalificacionArea[]; // Solo para pruebas de admisión
   intentoNumero: number;
 }
 

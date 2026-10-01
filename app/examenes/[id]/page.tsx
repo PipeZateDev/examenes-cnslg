@@ -4,6 +4,7 @@ import { getDb } from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
 import Link from 'next/link';
 import ExamenActions from './ExamenActions';
+import ExamenEditorView from './ExamenEditorView';
 
 export default async function ExamenDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -99,32 +100,13 @@ export default async function ExamenDetailPage({ params }: { params: Promise<{ i
           esDocente={['admin', 'directivo', 'coordinador', 'supervisor', 'docente'].includes(session.rol)}
         />
 
-        {/* Questions list (read-only view) */}
-        <div className="mt-4 space-y-3">
-          <h2 className="font-semibold text-slate-700 text-lg mb-2">Preguntas ({preguntas.length})</h2>
-          {preguntas.map((p) => (
-            <div key={p.orden} className="bg-white rounded-xl shadow p-5 border-l-4 border-blue-400">
-              <div className="flex justify-between items-start mb-3">
-                <span className="bg-blue-100 text-blue-700 font-bold text-sm px-2 py-0.5 rounded">P{p.orden}</span>
-                <span className="text-slate-400 text-xs">Peso: {p.peso}%</span>
-              </div>
-              <p className="text-slate-800 font-medium mb-3 whitespace-pre-wrap">{p.enunciado}</p>
-              <div className="space-y-1.5">
-                {p.opciones.map(op => (
-                  <div key={op.letra} className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm
-                    ${p.respuestaCorrecta === op.letra ? 'bg-green-50 text-green-800 font-semibold' : 'text-slate-600'}`}>
-                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0
-                      ${p.respuestaCorrecta === op.letra ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-500'}`}>
-                      {op.letra}
-                    </span>
-                    {op.texto}
-                    {p.respuestaCorrecta === op.letra && <span className="ml-auto text-green-600 text-xs">✓ Correcta</span>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
+        {/* Interactive Editor & Live Student Simulator */}
+        <ExamenEditorView
+          examenId={id}
+          estado={examen.estado as string}
+          esAdmision={!!examen.esAdmision}
+          initialPreguntas={preguntas as any}
+        />
       </div>
     </div>
   );

@@ -40,17 +40,40 @@ export default function NuevoExamenPage() {
     try {
       let res: Response;
 
-      // For Word (.docx): extract text directly in browser so we send ~8KB instead of 4.7MB (avoids Vercel 413 Payload limit)
+      // For Word (.docx): extract text and images in browser
       if (file.name.toLowerCase().endsWith('.docx')) {
         try {
           const arrayBuffer = await file.arrayBuffer();
           // @ts-expect-error mammoth browser bundle
           const mammothModule = await import('mammoth/mammoth.browser.js');
           const mammothBrowser = mammothModule.default || mammothModule;
-          const { value: extractedText } = await mammothBrowser.extractRawText({ arrayBuffer });
 
-          if (!extractedText || !extractedText.trim()) {
-            setError('No se pudo extraer texto del documento Word. Verifica que tenga contenido legible.');
+          const imagesMap: Record<string, string> = {};
+          let imgCount = 0;
+
+          const options = {
+            convertImage: mammothBrowser.images.inline(function(element: any) {
+              return element.read("base64").then(function(imageBuffer: string) {
+                imgCount++;
+                const placeholder = `[IMAGEN_${imgCount}]`;
+                imagesMap[placeholder] = `data:${element.contentType};base64,${imageBuffer}`;
+                return { src: placeholder };
+              });
+            })
+          };
+
+          const htmlResult = await mammothBrowser.convertToHtml({ arrayBuffer }, options);
+          const textWithPlaceholders = htmlResult.value
+            .replace(/<img[^>]*src="(\[IMAGEN_\d+\])"[^>]*>/gi, '\n$1\n')
+            .replace(/<\/p>/gi, '\n')
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<[^>]+>/g, '')
+            .replace(/&nbsp;/g, ' ')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+
+          if (!textWithPlaceholders) {
+            setError('No se pudo extraer texto del documento Word.');
             setProcesando(false);
             return;
           }
@@ -59,7 +82,9 @@ export default function NuevoExamenPage() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              texto: extractedText,
+              texto: textWithPlaceholders,
+              imagenes: imagesMap,
+              esAdmision,
               nombreArchivo: file.name,
             }),
           });
@@ -67,12 +92,14 @@ export default function NuevoExamenPage() {
           console.warn('Fallback a subida normal de archivo:', docxErr);
           const fd = new FormData();
           fd.append('file', file);
+          fd.append('esAdmision', esAdmision ? '1' : '0');
           res = await fetch('/api/examenes/procesar-pdf', { method: 'POST', body: fd });
         }
       } else {
         // PDF or other formats
         const fd = new FormData();
         fd.append('file', file);
+        fd.append('esAdmision', esAdmision ? '1' : '0');
         res = await fetch('/api/examenes/procesar-pdf', { method: 'POST', body: fd });
       }
 
@@ -85,6 +112,12 @@ export default function NuevoExamenPage() {
       }
 
       if (!res.ok) { setError(data?.error || `Error ${res.status}: no se pudo procesar`); return; }
+
+      // Automatic creation: redirect directly to exam view!
+      if (data.id) {
+        router.push(`/examenes/${data.id}`);
+        return;
+      }
 
       if (data.titulo) setTitulo(data.titulo);
       if (data.materia) setMateria(data.materia);
@@ -174,8 +207,42 @@ export default function NuevoExamenPage() {
                 type="file"
                 accept=".pdf,.docx"
                 className="hidden"
-                onChange={e => { setFile(e.target.files?.[0] || null); setError(''); }}
+                onChange={e => {
+                  const selected = e.target.files?.[0] || null;
+                  setFile(selected);
+                  setError('');
+                  if (selected && /admisi[oó]n/i.test(selected.name)) {
+                    setEsAdmision(true);
+                  }
+                }}
               />
+            </div>
+
+            {/* Configuración de admisión y opciones */}
+            <div className="mt-5 p-4 rounded-xl bg-slate-50 border border-slate-200">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={esAdmision}
+                  onChange={e => setEsAdmision(e.target.checked)}
+                  className="mt-1 w-5 h-5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                />
+                <div>
+                  <span className="font-semibold text-slate-800 text-sm block">
+                    🎓 Es Prueba de Admisión
+                  </span>
+                  <span className="text-slate-500 text-xs block mt-0.5">
+                    Divide automáticamente el examen en las <strong>5 áreas básicas</strong> (Matemáticas, Español, Ciencias Naturales, Ciencias Sociales e Inglés) y pondera cada área al <strong>100%</strong> (5 preguntas de 20% en primaria, o 10 preguntas de 10% en bachillerato).
+                  </span>
+                </div>
+              </label>
+            </div>
+
+            <div className="mt-4 p-3 rounded-xl bg-blue-50/70 border border-blue-100 flex items-start gap-2 text-xs text-blue-800">
+              <span className="text-base flex-shrink-0">✨</span>
+              <span>
+                <strong>Flujo Automático:</strong> Al subir el documento, la IA extraerá las preguntas, conservará todas las imágenes y diagramas, y creará el examen de inmediato para llevarte directamente a la vista previa donde podrás marcar las respuestas correctas.
+              </span>
             </div>
 
             {error && (
@@ -186,15 +253,15 @@ export default function NuevoExamenPage() {
               <button
                 onClick={handleProcesar}
                 disabled={!file || procesando}
-                className="flex-1 bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white font-semibold py-3 rounded-lg transition"
+                className="flex-1 bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white font-semibold py-3 rounded-lg transition shadow-md hover:shadow-lg"
               >
-                {procesando ? '🤖 Procesando con IA...' : '🤖 Extraer Preguntas con IA'}
+                {procesando ? '🤖 Creando examen con IA...' : '🤖 Procesar y Crear Examen con IA'}
               </button>
             </div>
 
             {procesando && (
               <p className="text-center text-slate-500 text-sm mt-3 animate-pulse">
-                Analizando el examen con Gemini... esto puede tomar unos segundos.
+                Extrayendo preguntas, imágenes y diagramas con Gemini... Serás redirigido a la vista previa automáticamente.
               </p>
             )}
           </div>

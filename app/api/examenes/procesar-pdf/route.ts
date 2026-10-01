@@ -21,14 +21,19 @@ export async function POST(req: NextRequest) {
 
   try {
     let textoExamen = '';
+    let imagenesMap: Record<string, string> = {};
+    let esAdmision = false;
     const contentType = req.headers.get('content-type') || '';
 
     if (contentType.includes('application/json')) {
       const body = await req.json();
       textoExamen = body.texto || '';
+      imagenesMap = body.imagenes || {};
+      esAdmision = !!body.esAdmision;
     } else {
       const formData = await req.formData();
       const file = formData.get('file') as File;
+      esAdmision = formData.get('esAdmision') === '1' || formData.get('esAdmision') === 'true';
 
       if (!file) {
         return NextResponse.json({ error: 'Archivo requerido' }, { status: 400 });
@@ -62,7 +67,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No se pudo extraer texto del archivo.' }, { status: 422 });
     }
 
-    // Do not cut off exams unnecessarily (Gemini easily supports 100k+ chars)
     if (textoExamen.length > 100000) {
       textoExamen = textoExamen.substring(0, 100000) + '\n[... texto truncado ...]';
     }
@@ -70,28 +74,42 @@ export async function POST(req: NextRequest) {
     // Call Gemini AI
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
     
-    const prompt = `Eres un asistente especializado en digitalizar exámenes académicos para convertirlos en pruebas digitales evaluables pregunta por pregunta.
+    const prompt = `Eres un asistente pedagógico especializado en digitalizar exámenes del Colegio Nuevo San Luis Gonzaga para convertirlos en pruebas digitales evaluables pregunta por pregunta.
 
 Analiza el siguiente texto de un examen y conviértelo en una lista de preguntas digitales estructuradas.
-Sé claro y conciso en los enunciados y opciones.
-Para cada pregunta o actividad del examen:
-- enunciado: redacción clara de la pregunta, ejercicio o problema.
-- opciones: array de opciones con "letra" (A, B, C, D) y "texto". Si en el examen original las opciones no tienen letras explícitas o es una lista de ítems, formula o asigna letras A, B, C, D correspondientes.
-- notas: breve criterio de evaluación o null si no hay.
+${esAdmision ? `IMPORTANTE: Este es un EXAMEN DE ADMISIÓN. Debes clasificar obligatoriamente cada pregunta en una de las 5 ÁREAS BÁSICAS PRINCIPALES:
+- "Matemáticas" (para operaciones, problemas, lógica, secuencias, figuras)
+- "Español" (para lectura, gramática, vocabulario, comprensión)
+- "Ciencias Naturales" (para seres vivos, cuerpo, naturaleza, animales)
+- "Ciencias Sociales" (para comunidad, valores, historia, geografía)
+- "Inglés" (para vocabulario y expresiones en inglés)
+Indica en el campo "area" de cada pregunta el nombre exacto de una de estas 5 áreas.` : `Indica en el campo "area" la materia o área de la pregunta.`}
+
+Si en el texto hay referencias a imágenes como [IMAGEN_1], [IMAGEN_2], consérvalas o indícalas en el campo "imagen" (ej: "[IMAGEN_2]").
+
+Sé conciso en los enunciados y opciones.
+Para cada pregunta:
+- enunciado: texto claro de la pregunta.
+- area: nombre del área asignada.
+- opciones: array de opciones con "letra" (A, B, C, D) y "texto".
+- imagen: identificador de imagen si aplica (ej: "[IMAGEN_2]") o null.
+- notas: breve criterio o null.
 
 Devuelve estrictamente un JSON válido con esta estructura exacta:
 {
   "titulo": "título del examen",
-  "materia": "materia o área",
+  "materia": "${esAdmision ? 'Prueba General de Admisión (5 Áreas Básicas)' : 'materia o asignatura'}",
   "preguntas": [
     {
       "enunciado": "texto de la pregunta",
+      "area": "${esAdmision ? 'Matemáticas' : 'Materia'}",
       "opciones": [
         {"letra": "A", "texto": "opción A"},
         {"letra": "B", "texto": "opción B"},
         {"letra": "C", "texto": "opción C"},
         {"letra": "D", "texto": "opción D"}
       ],
+      "imagen": null,
       "notas": null
     }
   ]
@@ -145,23 +163,114 @@ ${textoExamen}`;
       }, { status: 422 });
     }
 
-    // Add order and auto-weights
-    const pesos = distribuirPesos(preguntas.length);
-    const preguntasConOrden = preguntas.map((p, i: number) => ({
-      orden: i + 1,
-      enunciado: p.enunciado,
-      opciones: p.opciones,
-      respuestaCorrecta: null, // docente must set this
-      peso: pesos[i],
-      notas: p.notas || null,
-    }));
+    // Weight calculation & image attachment
+    // In admissions: Each area sums to 100%!
+    // In regular: All questions sum to 100% total!
+    let preguntasFinales: Array<{
+      orden: number;
+      enunciado: string;
+      area?: string;
+      opciones: Array<{ letra: string; texto: string }>;
+      respuestaCorrecta: null;
+      peso: number;
+      imagen?: string | null;
+      notas?: string | null;
+    }> = [];
+
+    if (esAdmision) {
+      // Group by area
+      const areasMap = new Map<string, typeof preguntas>();
+      for (const p of preguntas) {
+        const a = p.area || 'General';
+        if (!areasMap.has(a)) areasMap.set(a, []);
+        areasMap.get(a)!.push(p);
+      }
+
+      // Distribute 100% per area
+      areasMap.forEach((qList) => {
+        const pesosArea = distribuirPesos(qList.length);
+        qList.forEach((q, idx) => {
+          (q as { peso?: number }).peso = pesosArea[idx];
+        });
+      });
+
+      let globalOrden = 1;
+      for (const qList of Array.from(areasMap.values())) {
+        for (const p of qList) {
+          // Resolve image from imagesMap
+          let imgData: string | null = null;
+          if (p.imagen && imagenesMap[p.imagen]) {
+            imgData = imagenesMap[p.imagen];
+          } else {
+            const m = p.enunciado.match(/\[IMAGEN_\d+\]/);
+            if (m && imagenesMap[m[0]]) imgData = imagenesMap[m[0]];
+          }
+
+          preguntasFinales.push({
+            orden: globalOrden++,
+            enunciado: p.enunciado.replace(/\[IMAGEN_\d+\]/g, '').trim(),
+            area: p.area || 'General',
+            opciones: p.opciones,
+            respuestaCorrecta: null,
+            peso: (p as { peso?: number }).peso || 20,
+            imagen: imgData,
+            notas: p.notas || null,
+          });
+        }
+      }
+    } else {
+      // Regular exam: 100% distributed evenly across all questions
+      const pesos = distribuirPesos(preguntas.length);
+      preguntasFinales = preguntas.map((p, i) => {
+        let imgData: string | null = null;
+        if (p.imagen && imagenesMap[p.imagen]) {
+          imgData = imagenesMap[p.imagen];
+        } else {
+          const m = p.enunciado.match(/\[IMAGEN_\d+\]/);
+          if (m && imagenesMap[m[0]]) imgData = imagenesMap[m[0]];
+        }
+
+        return {
+          orden: i + 1,
+          enunciado: p.enunciado.replace(/\[IMAGEN_\d+\]/g, '').trim(),
+          area: p.area || undefined,
+          opciones: p.opciones,
+          respuestaCorrecta: null,
+          peso: pesos[i],
+          imagen: imgData,
+          notas: p.notas || null,
+        };
+      });
+    }
+
+    // Auto-create exam directly in MongoDB
+    const { getDb } = await import('@/lib/mongodb');
+    const db = await getDb();
+    const insertResult = await db.collection('ex_examenes').insertOne({
+      titulo: extracted.titulo || (esAdmision ? 'Examen de Admisión' : 'Nuevo Examen'),
+      descripcion: esAdmision ? 'Prueba de admisión dividida en las 5 áreas básicas principales (100% por área)' : '',
+      materia: extracted.materia || (esAdmision ? 'Admisión General' : ''),
+      cursos: [],
+      anioLectivo: new Date().getFullYear(),
+      esAdmision: esAdmision,
+      estado: 'borrador',
+      creadoPor: session.userId,
+      creadoEn: new Date(),
+      duracionMinutos: null,
+      intentosPermitidos: 1,
+      preguntas: preguntasFinales,
+      claveAcceso: null,
+    });
+
+    const examenId = insertResult.insertedId.toString();
 
     return NextResponse.json({
       ok: true,
+      id: examenId,
       titulo: extracted.titulo,
       materia: extracted.materia,
-      preguntas: preguntasConOrden,
-      total: preguntasConOrden.length,
+      preguntas: preguntasFinales,
+      total: preguntasFinales.length,
     });
 
   } catch (err: unknown) {
@@ -176,7 +285,10 @@ interface ExtractedExamen {
   materia?: string;
   preguntas: Array<{
     enunciado: string;
+    area?: string;
     opciones: Array<{ letra: string; texto: string }>;
+    imagen?: string | null;
+    peso?: number;
     notas?: string | null;
   }>;
 }

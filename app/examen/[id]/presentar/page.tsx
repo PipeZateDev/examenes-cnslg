@@ -8,12 +8,15 @@ interface Pregunta {
   enunciado: string;
   opciones: { letra: string; texto: string }[];
   peso: number;
+  area?: string;
+  imagen?: string | null;
 }
 
 interface ExamenData {
   _id: string;
   titulo: string;
   materia?: string;
+  esAdmision?: boolean;
   preguntas: Pregunta[];
   duracionMinutos?: number;
 }
@@ -163,18 +166,36 @@ export default function PresentarExamenPage() {
       {/* Question */}
       <main className="flex-1 flex flex-col items-center justify-center p-6">
         <div className="w-full max-w-2xl bg-white rounded-2xl shadow-lg p-8">
-          {/* Question number */}
-          <div className="flex items-center justify-between mb-6">
-            <span className="bg-blue-100 text-blue-800 text-sm font-semibold px-3 py-1 rounded-full">
-              Pregunta {current + 1}
-            </span>
+          {/* Question number and Area */}
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className="bg-blue-100 text-blue-800 text-sm font-semibold px-3 py-1 rounded-full">
+                Pregunta {current + 1}
+              </span>
+              {pregunta.area && (
+                <span className="bg-purple-100 text-purple-800 text-xs font-semibold px-2.5 py-1 rounded-full border border-purple-200">
+                  {pregunta.area}
+                </span>
+              )}
+            </div>
             <span className="text-xs text-slate-400">Peso: {pregunta.peso}%</span>
           </div>
 
           {/* Enunciado */}
-          <p className="text-slate-800 text-lg leading-relaxed mb-8 whitespace-pre-wrap">
+          <p className="text-slate-800 text-lg leading-relaxed mb-6 whitespace-pre-wrap font-medium">
             {pregunta.enunciado}
           </p>
+
+          {/* Diagram / Image if present */}
+          {pregunta.imagen && (
+            <div className="mb-6 flex justify-center bg-slate-50 p-3 rounded-xl border border-slate-200">
+              <img
+                src={pregunta.imagen}
+                alt={`Diagrama de la pregunta ${pregunta.orden}`}
+                className="max-h-72 max-w-full rounded-lg object-contain shadow-sm bg-white p-1"
+              />
+            </div>
+          )}
 
           {/* Options */}
           <div className="space-y-3">
