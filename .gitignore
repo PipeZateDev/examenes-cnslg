@@ -43,3 +43,10 @@ next-env.d.ts
 # terabox cloud sync
 *.terabox*
 
+# electron builds and installers
+/dist
+/dist-*
+/release
+/instalador
+
+

@@ -3,8 +3,11 @@ const path = require('path');
 const http = require('http');
 
 const NEXT_PORT = 3001;
-const DEFAULT_LOCAL_URL = `http://localhost:${NEXT_PORT}`;
-const NEXT_URL = process.env.EXAMENES_WEB_URL || process.env.NEXT_URL || DEFAULT_LOCAL_URL;
+const DEFAULT_URL = app.isPackaged || process.env.NODE_ENV === 'production'
+  ? 'https://examenes-cnslg.vercel.app'
+  : `http://localhost:${NEXT_PORT}`;
+
+const NEXT_URL = process.env.EXAMENES_WEB_URL || process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_URL || DEFAULT_URL;
 
 let mainWindow = null;
 let isLocked = false; // True while exam is in progress (kiosk mode)
@@ -92,7 +95,7 @@ async function createWindow() {
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
     },
-    icon: path.join(__dirname, 'public', 'logo-cnslg.png'),
+    icon: path.join(__dirname, '..', 'public', 'icon.ico'),
   });
 
   // Set custom user agent identifying the official desktop application

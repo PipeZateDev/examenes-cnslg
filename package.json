@@ -1,6 +1,8 @@
 {
   "name": "examenes-cnslg",
-  "version": "0.1.0",
+  "version": "1.0.0",
+  "description": "Aplicativo Oficial de Exámenes - Colegio Nuevo San Luis Gonzaga",
+  "author": "Colegio Nuevo San Luis Gonzaga",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -9,29 +11,36 @@
     "start": "next start -p 3001",
     "setup": "node scripts/setup.js",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3001 && electron .\"",
-    "electron:build": "cross-env ELECTRON_BUILD=1 npm run build && electron-builder",
+    "electron:build": "electron-builder --win",
     "electron:start": "electron ."
   },
   "build": {
     "appId": "edu.cnslg.examenes",
     "productName": "Exámenes CNSLG",
+    "npmRebuild": false,
+    "nodeGypRebuild": false,
+    "asar": true,
+    "asarUnpack": [],
+    "directories": {
+      "output": "C:/Users/Soporte-CNSLG/AppData/Local/Temp/examenes-cnslg-dist"
+    },
     "win": {
       "target": "nsis",
-      "icon": "public/logo-cnslg.png"
+      "icon": "public/icon.ico"
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Exámenes CNSLG"
     },
     "files": [
       "electron/**/*",
-      ".next/**/*",
-      "public/**/*",
-      "node_modules/**/*",
-      "package.json"
-    ],
-    "extraResources": [
-      { "from": ".next", "to": ".next" }
+      "public/icon.ico",
+      "public/icon.png",
+      "public/logo-cnslg.png",
+      "package.json",
+      "!node_modules/**/*",
+      "!**/*.terabox*"
     ]
   },
   "dependencies": {
