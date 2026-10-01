@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useEffect, useTransition } from 'react';
 import Link from 'next/link';
 
 interface StudentItem {
@@ -60,6 +60,45 @@ export default function EstudiantesManager({
   const [newCourseName, setNewCourseName] = useState('');
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{ tipo: 'success' | 'error'; mensaje: string } | null>(null);
+
+  // Real-time live search and filters state
+  const [searchTerm, setSearchTerm] = useState(query || '');
+  const [selectedCurso, setSelectedCurso] = useState(cursoFilter || '');
+  const [selectedAdmision, setSelectedAdmision] = useState(admisionFilter || '');
+  const [searchingLive, setSearchingLive] = useState(false);
+  const [courseSearch, setCourseSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(page || 1);
+  const [currentTotal, setCurrentTotal] = useState(total || 0);
+  const [currentTotalPages, setCurrentTotalPages] = useState(totalPages || 1);
+
+  // Debounced real-time fetch from API
+  useEffect(() => {
+    const handler = setTimeout(async () => {
+      setSearchingLive(true);
+      try {
+        const params = new URLSearchParams();
+        if (searchTerm.trim()) params.set('q', searchTerm.trim());
+        if (selectedCurso) params.set('curso', selectedCurso);
+        if (selectedAdmision) params.set('admision', selectedAdmision);
+        params.set('page', '1');
+
+        const res = await fetch(`/api/estudiantes?${params.toString()}`);
+        if (res.ok) {
+          const data = await res.json();
+          setEstudiantes(data.estudiantes || []);
+          setCurrentTotal(data.total || 0);
+          setCurrentPage(data.page || 1);
+          setCurrentTotalPages(data.totalPages || 1);
+        }
+      } catch (err) {
+        console.error('Error in real-time student search:', err);
+      } finally {
+        setSearchingLive(false);
+      }
+    }, 200);
+
+    return () => clearTimeout(handler);
+  }, [searchTerm, selectedCurso, selectedAdmision]);
 
   const showToast = (tipo: 'success' | 'error', mensaje: string) => {
     setToast({ tipo, mensaje });
@@ -234,7 +273,7 @@ export default function EstudiantesManager({
                 : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
             }`}
           >
-            👨‍🎓 Lista de Estudiantes ({total.toLocaleString()})
+            👨‍🎓 Lista de Estudiantes ({currentTotal.toLocaleString()})
           </button>
           <button
             onClick={() => setActiveTab('cursos')}
@@ -250,133 +289,215 @@ export default function EstudiantesManager({
 
         {activeTab === 'estudiantes' ? (
           <>
-            {/* Search and Filters */}
-            <form className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 mb-6 flex gap-3 flex-wrap">
-              <input
-                name="q"
-                defaultValue={query}
-                placeholder="Buscar por nombre o documento..."
-                className="flex-1 min-w-[240px] border border-slate-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50 focus:bg-white transition"
-              />
+            {/* Real-Time Live Search and Filters */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 mb-6 flex gap-3 flex-wrap items-center">
+              <div className="relative flex-1 min-w-[240px]">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">
+                  🔍
+                </span>
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  placeholder="Buscar en tiempo real por nombre o documento..."
+                  className="w-full pl-9 pr-8 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50 focus:bg-white transition"
+                  autoComplete="off"
+                />
+                {searchTerm && (
+                  <button
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold p-1 leading-none rounded-md"
+                    title="Limpiar búsqueda"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
               <select
-                name="curso"
-                defaultValue={cursoFilter}
-                className="border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50"
+                value={selectedCurso}
+                onChange={e => setSelectedCurso(e.target.value)}
+                className="border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50 font-medium"
               >
                 <option value="">Todos los Cursos</option>
                 {cursos.map(c => (
                   <option key={c.nombre} value={c.nombre}>{c.nombre}</option>
                 ))}
               </select>
+
               <select
-                name="admision"
-                defaultValue={admisionFilter}
-                className="border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50"
+                value={selectedAdmision}
+                onChange={e => setSelectedAdmision(e.target.value)}
+                className="border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50 font-medium"
               >
                 <option value="">Todos los Tipos</option>
                 <option value="0">Regulares</option>
                 <option value="1">Admisiones</option>
               </select>
-              <button
-                type="submit"
-                className="px-5 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition shadow-xs"
-              >
-                Buscar
-              </button>
-            </form>
 
-            {/* Students Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {estudiantes.map(est => {
-                const fotoSrc = est.foto?.data
-                  ? `data:${est.foto.contentType};base64,${est.foto.data}`
-                  : null;
-                const posX = est.fotoPosicionX ?? 50;
-                const posY = est.fotoPosicionY ?? 50;
-
-                return (
-                  <div
-                    key={est._id?.toString() || est.numeroDocumento}
-                    className="bg-white rounded-2xl shadow-sm hover:shadow-md border border-slate-200 p-4 transition flex flex-col justify-between"
-                  >
-                    <div>
-                      <div className="flex items-start justify-between gap-2 mb-3">
-                        <div className="w-14 h-14 rounded-full overflow-hidden bg-slate-100 flex items-center justify-center border-2 border-slate-200 flex-shrink-0">
-                          {fotoSrc ? (
-                            <img
-                              src={fotoSrc}
-                              alt={est.nombreCompleto}
-                              className="w-full h-full object-cover"
-                              style={{ objectPosition: `${posX}% ${posY}%` }}
-                            />
-                          ) : (
-                            <span className="text-2xl">👤</span>
-                          )}
-                        </div>
-                        <div className="flex flex-col items-end gap-1">
-                          {est.esAdmision && (
-                            <span className="bg-purple-100 text-purple-800 font-bold text-[10px] px-2 py-0.5 rounded-full border border-purple-200">
-                              Admisión
-                            </span>
-                          )}
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                            est.activo !== false ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
-                          }`}>
-                            {est.activo !== false ? 'Activo' : 'Inactivo'}
-                          </span>
-                        </div>
-                      </div>
-
-                      <h3 className="font-bold text-slate-800 text-sm leading-tight line-clamp-2">
-                        {est.nombreCompleto}
-                      </h3>
-                      <p className="text-xs text-slate-500 font-mono mt-1">
-                        {est.tipoDocumento || 'TI'}: <strong>{est.numeroDocumento}</strong>
-                      </p>
-                      {est.curso && (
-                        <p className="text-xs text-slate-400 mt-0.5">
-                          Curso: <span className="font-semibold text-slate-600">{est.curso}</span>
-                        </p>
-                      )}
-                    </div>
-
-                    {canEdit && (
-                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-end">
-                        <button
-                          onClick={() => openEditModal(est)}
-                          className="px-3 py-1.5 bg-slate-50 hover:bg-blue-50 text-blue-700 font-bold text-xs rounded-lg transition border border-slate-200 flex items-center gap-1"
-                        >
-                          <span>✏️</span>
-                          <span>Editar Datos</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              {searchingLive && (
+                <div className="flex items-center gap-1.5 text-xs text-blue-600 font-semibold px-2">
+                  <div className="w-3.5 h-3.5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                  <span>Buscando...</span>
+                </div>
+              )}
             </div>
 
+            {/* Live Search Results Header */}
+            {searchTerm && (
+              <div className="mb-4 text-xs text-slate-500 flex items-center justify-between px-1">
+                <span>
+                  Resultados para &quot;<strong className="text-slate-800">{searchTerm}</strong>&quot;: <strong>{currentTotal}</strong> estudiante(s) encontrado(s)
+                </span>
+                <button
+                  onClick={() => { setSearchTerm(''); setSelectedCurso(''); setSelectedAdmision(''); }}
+                  className="text-blue-600 hover:underline font-semibold text-xs"
+                >
+                  Restablecer filtros
+                </button>
+              </div>
+            )}
+
+            {/* Students Grid */}
+            {estudiantes.length === 0 ? (
+              <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-12 text-center text-slate-400">
+                <div className="text-5xl mb-3">👨‍🎓</div>
+                <h3 className="font-bold text-slate-700 text-lg mb-1">No se encontraron estudiantes</h3>
+                <p className="text-slate-400 text-sm">
+                  {searchTerm || selectedCurso || selectedAdmision ? 'Prueba cambiando los términos de búsqueda o filtros.' : 'No hay estudiantes registrados en la base de datos.'}
+                </p>
+                {(searchTerm || selectedCurso || selectedAdmision) && (
+                  <button
+                    onClick={() => { setSearchTerm(''); setSelectedCurso(''); setSelectedAdmision(''); }}
+                    className="mt-4 px-4 py-1.5 bg-blue-50 text-blue-700 font-semibold text-xs rounded-xl hover:bg-blue-100 transition"
+                  >
+                    Mostrar todos los estudiantes
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {estudiantes.map(est => {
+                  const fotoSrc = est.foto?.data
+                    ? `data:${est.foto.contentType};base64,${est.foto.data}`
+                    : null;
+                  const posX = est.fotoPosicionX ?? 50;
+                  const posY = est.fotoPosicionY ?? 50;
+
+                  return (
+                    <div
+                      key={est._id?.toString() || est.numeroDocumento}
+                      className="bg-white rounded-2xl shadow-sm hover:shadow-md border border-slate-200 p-4 transition flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-2 mb-3">
+                          <div className="w-14 h-14 rounded-full overflow-hidden bg-slate-100 flex items-center justify-center border-2 border-slate-200 flex-shrink-0">
+                            {fotoSrc ? (
+                              <img
+                                src={fotoSrc}
+                                alt={est.nombreCompleto}
+                                className="w-full h-full object-cover"
+                                style={{ objectPosition: `${posX}% ${posY}%` }}
+                              />
+                            ) : (
+                              <span className="text-2xl">👤</span>
+                            )}
+                          </div>
+                          <div className="flex flex-col items-end gap-1">
+                            {est.esAdmision && (
+                              <span className="bg-purple-100 text-purple-800 font-bold text-[10px] px-2 py-0.5 rounded-full border border-purple-200">
+                                Admisión
+                              </span>
+                            )}
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                              est.activo !== false ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
+                            }`}>
+                              {est.activo !== false ? 'Activo' : 'Inactivo'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <h3 className="font-bold text-slate-800 text-sm leading-tight line-clamp-2">
+                          {est.nombreCompleto}
+                        </h3>
+                        <p className="text-xs text-slate-500 font-mono mt-1">
+                          {est.tipoDocumento || 'TI'}: <strong>{est.numeroDocumento}</strong>
+                        </p>
+                        {est.curso && (
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            Curso: <span className="font-semibold text-slate-600">{est.curso}</span>
+                          </p>
+                        )}
+                      </div>
+
+                      {canEdit && (
+                        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-end">
+                          <button
+                            onClick={() => openEditModal(est)}
+                            className="px-3 py-1.5 bg-slate-50 hover:bg-blue-50 text-blue-700 font-bold text-xs rounded-lg transition border border-slate-200 flex items-center gap-1 cursor-pointer"
+                          >
+                            <span>✏️</span>
+                            <span>Editar Datos</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Pagination */}
-            {totalPages > 1 && (
+            {currentTotalPages > 1 && (
               <div className="mt-6 flex items-center justify-center gap-2">
-                {page > 1 && (
-                  <Link
-                    href={`/estudiantes?q=${query}&curso=${cursoFilter}&admision=${admisionFilter}&page=${page - 1}`}
-                    className="px-4 py-2 bg-white text-blue-600 rounded-xl shadow-sm border border-slate-200 text-sm font-semibold hover:bg-slate-50"
+                {currentPage > 1 && (
+                  <button
+                    onClick={async () => {
+                      const nextP = currentPage - 1;
+                      setSearchingLive(true);
+                      const params = new URLSearchParams();
+                      if (searchTerm.trim()) params.set('q', searchTerm.trim());
+                      if (selectedCurso) params.set('curso', selectedCurso);
+                      if (selectedAdmision) params.set('admision', selectedAdmision);
+                      params.set('page', String(nextP));
+                      const res = await fetch(`/api/estudiantes?${params.toString()}`);
+                      if (res.ok) {
+                        const data = await res.json();
+                        setEstudiantes(data.estudiantes || []);
+                        setCurrentPage(nextP);
+                      }
+                      setSearchingLive(false);
+                    }}
+                    className="px-4 py-2 bg-white text-blue-600 rounded-xl shadow-sm border border-slate-200 text-sm font-semibold hover:bg-slate-50 cursor-pointer"
                   >
                     ← Anterior
-                  </Link>
+                  </button>
                 )}
                 <span className="text-slate-500 text-xs px-3 font-semibold">
-                  Página {page} de {totalPages}
+                  Página {currentPage} de {currentTotalPages}
                 </span>
-                {page < totalPages && (
-                  <Link
-                    href={`/estudiantes?q=${query}&curso=${cursoFilter}&admision=${admisionFilter}&page=${page + 1}`}
-                    className="px-4 py-2 bg-white text-blue-600 rounded-xl shadow-sm border border-slate-200 text-sm font-semibold hover:bg-slate-50"
+                {currentPage < currentTotalPages && (
+                  <button
+                    onClick={async () => {
+                      const nextP = currentPage + 1;
+                      setSearchingLive(true);
+                      const params = new URLSearchParams();
+                      if (searchTerm.trim()) params.set('q', searchTerm.trim());
+                      if (selectedCurso) params.set('curso', selectedCurso);
+                      if (selectedAdmision) params.set('admision', selectedAdmision);
+                      params.set('page', String(nextP));
+                      const res = await fetch(`/api/estudiantes?${params.toString()}`);
+                      if (res.ok) {
+                        const data = await res.json();
+                        setEstudiantes(data.estudiantes || []);
+                        setCurrentPage(nextP);
+                      }
+                      setSearchingLive(false);
+                    }}
+                    className="px-4 py-2 bg-white text-blue-600 rounded-xl shadow-sm border border-slate-200 text-sm font-semibold hover:bg-slate-50 cursor-pointer"
                   >
                     Siguiente →
-                  </Link>
+                  </button>
                 )}
               </div>
             )}
@@ -384,31 +505,42 @@ export default function EstudiantesManager({
         ) : (
           /* Courses Tab */
           <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
               <div>
                 <h2 className="text-lg font-bold text-slate-800">Cursos Registrados en MongoDB</h2>
                 <p className="text-xs text-slate-500">Grados y grupos habilitados para asignar a exámenes y estudiantes</p>
               </div>
-              {canEdit && (
-                <button
-                  onClick={() => setIsCreatingCourse(true)}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1"
-                >
-                  <span>+ Agregar Curso</span>
-                </button>
-              )}
+              <div className="flex items-center gap-3">
+                <input
+                  type="text"
+                  value={courseSearch}
+                  onChange={e => setCourseSearch(e.target.value)}
+                  placeholder="Filtrar curso..."
+                  className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {canEdit && (
+                  <button
+                    onClick={() => setIsCreatingCourse(true)}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>+ Agregar Curso</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              {cursos.map(c => (
-                <div
-                  key={c.nombre}
-                  className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center hover:border-blue-300 transition"
-                >
-                  <p className="text-xl font-extrabold text-slate-800">{c.nombre}</p>
-                  <p className="text-[11px] text-slate-400 mt-1">Colegio CNSLG</p>
-                </div>
-              ))}
+              {cursos
+                .filter(c => !courseSearch.trim() || c.nombre.toLowerCase().includes(courseSearch.toLowerCase().trim()))
+                .map(c => (
+                  <div
+                    key={c.nombre}
+                    className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center hover:border-blue-300 transition"
+                  >
+                    <p className="text-xl font-extrabold text-slate-800">{c.nombre}</p>
+                    <p className="text-[11px] text-slate-400 mt-1">Colegio CNSLG</p>
+                  </div>
+                ))}
             </div>
           </div>
         )}

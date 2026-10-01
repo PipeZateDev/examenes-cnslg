@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { formatHoraBogota, formatFechaHoraBogota } from '@/lib/utils';
 
 interface CalificacionArea {
   area: string;
@@ -398,7 +399,7 @@ export default function ResultadosPage() {
 
                         {/* Time submitted */}
                         <td className="px-4 py-3.5 text-center text-xs text-slate-500 font-mono">
-                          {intento.enviadoEn ? new Date(intento.enviadoEn).toLocaleTimeString('es-CO') : 'En curso'}
+                          {intento.enviadoEn ? formatHoraBogota(intento.enviadoEn) : 'En curso'}
                         </td>
 
                         {/* Actions / 2nd Attempt */}
@@ -466,7 +467,7 @@ export default function ResultadosPage() {
                 </div>
                 <p className="text-slate-500 text-xs mt-1">
                   Documento: <strong className="font-mono">{selected.estudianteId}</strong> • Enviado:{' '}
-                  {selected.enviadoEn ? new Date(selected.enviadoEn).toLocaleString('es-CO') : 'En curso'}
+                  {selected.enviadoEn ? formatFechaHoraBogota(selected.enviadoEn) : 'En curso'}
                 </p>
               </div>
               <button

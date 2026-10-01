@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+import CursoExamenSelector from '@/components/admin/CursoExamenSelector';
 
 export default function EditarUsuarioPage() {
   const { id } = useParams<{ id: string }>();
@@ -16,6 +17,8 @@ export default function EditarUsuarioPage() {
     email: '',
     rol: 'docente',
     activo: true,
+    cursosAsignados: [] as string[],
+    examenesAsignados: [] as string[],
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -35,6 +38,8 @@ export default function EditarUsuarioPage() {
             email: d.usuario.email || '',
             rol: d.usuario.rol || 'docente',
             activo: d.usuario.activo !== false,
+            cursosAsignados: Array.isArray(d.usuario.cursosAsignados) ? d.usuario.cursosAsignados : [],
+            examenesAsignados: Array.isArray(d.usuario.examenesAsignados) ? d.usuario.examenesAsignados : [],
           });
         }
       })
@@ -59,7 +64,7 @@ export default function EditarUsuarioPage() {
         setError(data.error || 'Error al actualizar');
         return;
       }
-      setSuccess('✓ Usuario actualizado correctamente');
+      setSuccess('✓ Usuario y asignaciones actualizados correctamente');
       setTimeout(() => router.push('/admin/usuarios'), 1000);
     } catch {
       setError('Error de conexión con el servidor');
@@ -96,13 +101,15 @@ export default function EditarUsuarioPage() {
 
   return (
     <div className="min-h-screen bg-slate-100 p-6 flex items-center justify-center">
-      <div className="bg-white rounded-3xl shadow-xl border border-slate-200 p-8 max-w-lg w-full">
+      <div className="bg-white rounded-3xl shadow-xl border border-slate-200 p-6 md:p-8 max-w-2xl w-full my-6">
         <div className="flex items-center gap-2 text-xs mb-3 text-slate-500">
           <Link href="/admin/usuarios" className="text-blue-600 hover:underline">← Volver a Usuarios</Link>
         </div>
 
-        <h1 className="text-2xl font-bold text-slate-800 mb-1">✏️ Modificar Usuario</h1>
-        <p className="text-slate-500 text-xs mb-6">Actualiza los datos de acceso y permisos de este colaborador.</p>
+        <h1 className="text-2xl font-bold text-slate-800 mb-1">✏️ Modificar Usuario y Asignaciones</h1>
+        <p className="text-slate-500 text-xs mb-6">
+          Actualiza los datos de acceso, cursos asignados y exámenes habilitados para este colaborador.
+        </p>
 
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-4 py-3 rounded-xl mb-4">
@@ -124,7 +131,7 @@ export default function EditarUsuarioPage() {
                 type="text"
                 value={form.nombre}
                 onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
-                className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white"
+                className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white font-medium"
                 required
               />
             </div>
@@ -134,7 +141,7 @@ export default function EditarUsuarioPage() {
                 type="text"
                 value={form.apellido}
                 onChange={e => setForm(f => ({ ...f, apellido: e.target.value }))}
-                className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white"
+                className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white font-medium"
               />
             </div>
           </div>
@@ -178,7 +185,7 @@ export default function EditarUsuarioPage() {
               <select
                 value={form.rol}
                 onChange={e => setForm(f => ({ ...f, rol: e.target.value }))}
-                className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white"
+                className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white font-medium"
               >
                 <option value="docente">👩‍🏫 Docente</option>
                 <option value="supervisor">👁 Supervisor</option>
@@ -193,7 +200,7 @@ export default function EditarUsuarioPage() {
               <select
                 value={form.activo ? '1' : '0'}
                 onChange={e => setForm(f => ({ ...f, activo: e.target.value === '1' }))}
-                className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white"
+                className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white font-medium"
               >
                 <option value="1">✓ Activo</option>
                 <option value="0">✗ Inactivo</option>
@@ -201,12 +208,20 @@ export default function EditarUsuarioPage() {
             </div>
           </div>
 
+          {/* Selector de Cursos y Exámenes */}
+          <CursoExamenSelector
+            selectedCursos={form.cursosAsignados}
+            onChangeCursos={cursos => setForm(f => ({ ...f, cursosAsignados: cursos }))}
+            selectedExamenes={form.examenesAsignados}
+            onChangeExamenes={examenes => setForm(f => ({ ...f, examenesAsignados: examenes }))}
+          />
+
           <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-100">
             <button
               type="button"
               onClick={handleDelete}
               disabled={saving}
-              className="px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 font-semibold rounded-xl text-xs transition border border-red-200"
+              className="px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 font-semibold rounded-xl text-xs transition border border-red-200 cursor-pointer"
             >
               🗑 Eliminar
             </button>
@@ -221,7 +236,7 @@ export default function EditarUsuarioPage() {
               <button
                 type="submit"
                 disabled={saving}
-                className="px-5 py-2.5 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-xl text-xs transition shadow-xs disabled:opacity-50"
+                className="px-5 py-2.5 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-xl text-xs transition shadow-xs disabled:opacity-50 cursor-pointer"
               >
                 {saving ? 'Guardando...' : 'Guardar Cambios'}
               </button>
@@ -232,4 +247,3 @@ export default function EditarUsuarioPage() {
     </div>
   );
 }
-

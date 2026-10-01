@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { username, password, nombre, apellido, email, rol, cursosAsignados, materiasAsignadas } = body;
+  const { username, password, nombre, apellido, email, rol, cursosAsignados, materiasAsignadas, examenesAsignados } = body;
 
   if (!username || !password || !nombre || !rol) {
     return NextResponse.json({ error: 'Usuario, contraseña, nombre y rol son obligatorios' }, { status: 400 });
@@ -52,6 +52,7 @@ export async function POST(req: NextRequest) {
     rol,
     cursosAsignados: Array.isArray(cursosAsignados) ? cursosAsignados : [],
     materiasAsignadas: Array.isArray(materiasAsignadas) ? materiasAsignadas : [],
+    examenesAsignados: Array.isArray(examenesAsignados) ? examenesAsignados : [],
     activo: true,
     creadoEn: new Date(),
     actualizadoEn: new Date(),

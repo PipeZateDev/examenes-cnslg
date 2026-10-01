@@ -1,20 +1,101 @@
 import { createHmac } from 'crypto';
-import { format } from 'date-fns';
+
+export const TIMEZONE_BOGOTA = 'America/Bogota';
 
 const CLOSE_SECRET = process.env.CLOSE_CODE_SECRET || 'cnslg-secret-fallback';
 
 /**
- * Generates a deterministic 6-digit close code for a given date.
+ * Returns today's date in Colombia (America/Bogota, UTC-5) as 'YYYY-MM-DD' string.
+ * This guarantees that even when running on Vercel (UTC+0), dates match the school day in Bogotá.
+ */
+export function hoy(date: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: TIMEZONE_BOGOTA,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
+/**
+ * Generates a deterministic 6-digit close code for a given date in Bogotá time.
  * Code changes each day and is the same for all admins on the same day.
  */
 export function generateCloseCode(date: Date = new Date()): string {
-  const dateStr = format(date, 'yyyy-MM-dd');
+  const dateStr = hoy(date);
   const hmac = createHmac('sha256', CLOSE_SECRET);
   hmac.update(dateStr);
   const hash = hmac.digest('hex');
   // Take first 6 hex chars, convert to 6-digit number
   const num = parseInt(hash.substring(0, 6), 16) % 1000000;
   return num.toString().padStart(6, '0');
+}
+
+/**
+ * Returns current year in Colombia timezone.
+ */
+export function getAnioBogota(date: Date = new Date()): number {
+  const yearStr = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TIMEZONE_BOGOTA,
+    year: 'numeric',
+  }).format(date);
+  return parseInt(yearStr, 10);
+}
+
+/**
+ * Format date in Colombia timezone (America/Bogota, UTC-5).
+ * e.g., "1 oct 2026"
+ */
+export function formatFechaBogota(
+  date: Date | string | number | undefined | null,
+  options?: Intl.DateTimeFormatOptions
+): string {
+  if (!date) return '';
+  const d = typeof date === 'string' || typeof date === 'number' ? new Date(date) : date;
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('es-CO', {
+    timeZone: TIMEZONE_BOGOTA,
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    ...options,
+  });
+}
+
+/**
+ * Format time in Colombia timezone (America/Bogota, UTC-5).
+ * e.g., "04:15 p. m."
+ */
+export function formatHoraBogota(
+  date: Date | string | number | undefined | null,
+  options?: Intl.DateTimeFormatOptions
+): string {
+  if (!date) return '';
+  const d = typeof date === 'string' || typeof date === 'number' ? new Date(date) : date;
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString('es-CO', {
+    timeZone: TIMEZONE_BOGOTA,
+    hour: '2-digit',
+    minute: '2-digit',
+    ...options,
+  });
+}
+
+/**
+ * Format full date & time in Colombia timezone (America/Bogota, UTC-5).
+ * e.g., "1/10/2026, 04:15 p. m."
+ */
+export function formatFechaHoraBogota(
+  date: Date | string | number | undefined | null,
+  options?: Intl.DateTimeFormatOptions
+): string {
+  if (!date) return '';
+  const d = typeof date === 'string' || typeof date === 'number' ? new Date(date) : date;
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleString('es-CO', {
+    timeZone: TIMEZONE_BOGOTA,
+    ...options,
+  });
 }
 
 /**
@@ -54,11 +135,4 @@ export function calcularCalificacion(
   respuestas: Array<{ esCorrecta: boolean; puntajeObtenido: number }>
 ): number {
   return respuestas.reduce((sum, r) => sum + (r.puntajeObtenido || 0), 0);
-}
-
-/**
- * Returns today's date as YYYY-MM-DD string.
- */
-export function hoy(): string {
-  return format(new Date(), 'yyyy-MM-dd');
 }

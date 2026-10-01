@@ -12,20 +12,28 @@ export async function GET(req: NextRequest) {
   const db = await getDb();
   const { searchParams } = new URL(req.url);
   const estado = searchParams.get('estado');
-  const esAdmision = searchParams.get('admision') === '1';
+  const all = searchParams.get('all') === '1';
+  const admisionParam = searchParams.get('admision');
 
-  const filter: Record<string, unknown> = { esAdmision };
-  if (estado) filter.estado = estado;
-
-  // Docentes only see their exams
-  if (session.rol === 'docente' || session.rol === 'supervisor') {
-    // TODO: filter by assigned courses
+  const filter: Record<string, unknown> = {};
+  if (!all && admisionParam !== null) {
+    filter.esAdmision = admisionParam === '1';
   }
+  if (estado) filter.estado = estado;
 
   const examenes = await db.collection('ex_examenes')
     .find(filter)
     .sort({ creadoEn: -1 })
-    .project({ titulo: 1, materia: 1, estado: 1, creadoEn: 1, cursos: 1, preguntas: { $size: '$preguntas' } })
+    .project({
+      titulo: 1,
+      materia: 1,
+      estado: 1,
+      creadoEn: 1,
+      cursos: 1,
+      esAdmision: 1,
+      claveAcceso: 1,
+      preguntas: { $size: '$preguntas' }
+    })
     .toArray();
 
   return NextResponse.json({ examenes });

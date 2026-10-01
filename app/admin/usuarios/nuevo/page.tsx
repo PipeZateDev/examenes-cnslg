@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import CursoExamenSelector from '@/components/admin/CursoExamenSelector';
 
 export default function NuevoUsuarioPage() {
   const router = useRouter();
@@ -13,6 +14,8 @@ export default function NuevoUsuarioPage() {
     apellido: '',
     email: '',
     rol: 'docente',
+    cursosAsignados: [] as string[],
+    examenesAsignados: [] as string[],
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -43,13 +46,15 @@ export default function NuevoUsuarioPage() {
 
   return (
     <div className="min-h-screen bg-slate-100 p-6 flex items-center justify-center">
-      <div className="bg-white rounded-3xl shadow-xl border border-slate-200 p-8 max-w-lg w-full">
+      <div className="bg-white rounded-3xl shadow-xl border border-slate-200 p-6 md:p-8 max-w-2xl w-full my-6">
         <div className="flex items-center gap-2 text-xs mb-3 text-slate-500">
           <Link href="/admin/usuarios" className="text-blue-600 hover:underline">← Volver a Usuarios</Link>
         </div>
 
         <h1 className="text-2xl font-bold text-slate-800 mb-1">➕ Registrar Nuevo Usuario Staff</h1>
-        <p className="text-slate-500 text-xs mb-6">Crea una cuenta para docentes, directivos o administradores.</p>
+        <p className="text-slate-500 text-xs mb-6">
+          Crea una cuenta para docentes o directivos y asigna sus cursos y exámenes habilitados.
+        </p>
 
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-4 py-3 rounded-xl mb-4">
@@ -108,31 +113,40 @@ export default function NuevoUsuarioPage() {
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Correo Electrónico (Opcional)</label>
-            <input
-              type="email"
-              value={form.email}
-              onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-              placeholder="correo@colegiocnslg.edu.co"
-              className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Correo Electrónico (Opcional)</label>
+              <input
+                type="email"
+                value={form.email}
+                onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                placeholder="correo@colegiocnslg.edu.co"
+                className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Rol / Nivel de Acceso</label>
+              <select
+                value={form.rol}
+                onChange={e => setForm(f => ({ ...f, rol: e.target.value }))}
+                className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white font-medium"
+              >
+                <option value="docente">👩‍🏫 Docente (Crear y presentar exámenes)</option>
+                <option value="supervisor">👁 Supervisor (Ver alumnos y resultados)</option>
+                <option value="coordinador">📚 Coordinador (Gestionar alumnos y exámenes)</option>
+                <option value="directivo">🏛 Directivo (Aprobar, activar y dar 2do intento)</option>
+                <option value="admin">⚙️ Administrador (Acceso total al sistema)</option>
+              </select>
+            </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Rol / Nivel de Acceso</label>
-            <select
-              value={form.rol}
-              onChange={e => setForm(f => ({ ...f, rol: e.target.value }))}
-              className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white"
-            >
-              <option value="docente">👩‍🏫 Docente (Crear y presentar exámenes)</option>
-              <option value="supervisor">👁 Supervisor (Ver alumnos y resultados)</option>
-              <option value="coordinador">📚 Coordinador (Gestionar alumnos y exámenes)</option>
-              <option value="directivo">🏛 Directivo (Aprobar, activar y dar 2do intento)</option>
-              <option value="admin">⚙️ Administrador (Acceso total al sistema)</option>
-            </select>
-          </div>
+          {/* Selector de Cursos y Exámenes */}
+          <CursoExamenSelector
+            selectedCursos={form.cursosAsignados}
+            onChangeCursos={cursos => setForm(f => ({ ...f, cursosAsignados: cursos }))}
+            selectedExamenes={form.examenesAsignados}
+            onChangeExamenes={examenes => setForm(f => ({ ...f, examenesAsignados: examenes }))}
+          />
 
           <div className="flex gap-3 pt-4 border-t border-slate-100">
             <Link
@@ -144,7 +158,7 @@ export default function NuevoUsuarioPage() {
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 py-2.5 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-xl text-sm transition shadow-xs disabled:opacity-50"
+              className="flex-1 py-2.5 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-xl text-sm transition shadow-xs disabled:opacity-50 cursor-pointer"
             >
               {loading ? 'Creando...' : 'Crear Usuario'}
             </button>
@@ -154,4 +168,3 @@ export default function NuevoUsuarioPage() {
     </div>
   );
 }
-

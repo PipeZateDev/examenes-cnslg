@@ -31,7 +31,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const body = await req.json();
-  const { username, password, nombre, apellido, email, rol, activo, cursosAsignados, materiasAsignadas } = body;
+  const { username, password, nombre, apellido, email, rol, activo, cursosAsignados, materiasAsignadas, examenesAsignados } = body;
 
   const db = await getDb();
   const updateFields: Record<string, unknown> = {
@@ -44,8 +44,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (email !== undefined) updateFields.email = String(email).trim().toLowerCase();
   if (rol) updateFields.rol = rol;
   if (activo !== undefined) updateFields.activo = Boolean(activo);
-  if (cursosAsignados !== undefined) updateFields.cursosAsignados = cursosAsignados;
-  if (materiasAsignadas !== undefined) updateFields.materiasAsignadas = materiasAsignadas;
+  if (cursosAsignados !== undefined) updateFields.cursosAsignados = Array.isArray(cursosAsignados) ? cursosAsignados : [];
+  if (materiasAsignadas !== undefined) updateFields.materiasAsignadas = Array.isArray(materiasAsignadas) ? materiasAsignadas : [];
+  if (examenesAsignados !== undefined) updateFields.examenesAsignados = Array.isArray(examenesAsignados) ? examenesAsignados : [];
 
   if (password && password.trim().length > 0) {
     updateFields.passwordHash = await bcrypt.hash(password, 10);
