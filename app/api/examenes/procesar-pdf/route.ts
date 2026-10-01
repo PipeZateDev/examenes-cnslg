@@ -20,35 +20,42 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const formData = await req.formData();
-    const file = formData.get('file') as File;
-
-    if (!file) {
-      return NextResponse.json({ error: 'Archivo requerido' }, { status: 400 });
-    }
-
-    const mimeType = file.type;
-    const buffer = Buffer.from(await file.arrayBuffer());
     let textoExamen = '';
+    const contentType = req.headers.get('content-type') || '';
 
-    // Extract text based on file type
-    if (mimeType === 'application/pdf' || file.name.endsWith('.pdf')) {
-      const pdfParse = (await import('pdf-parse')).default;
-      const data = await pdfParse(buffer);
-      textoExamen = data.text;
-    } else if (
-      mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-      file.name.endsWith('.docx')
-    ) {
-      const mammoth = await import('mammoth');
-      const result = await mammoth.extractRawText({ buffer });
-      textoExamen = result.value;
-    } else if (file.name.endsWith('.doc')) {
-      return NextResponse.json({
-        error: 'El formato .doc antiguo no está soportado. Por favor convierte el archivo a .docx o PDF.'
-      }, { status: 400 });
+    if (contentType.includes('application/json')) {
+      const body = await req.json();
+      textoExamen = body.texto || '';
     } else {
-      return NextResponse.json({ error: 'Formato no soportado. Usa PDF o DOCX.' }, { status: 400 });
+      const formData = await req.formData();
+      const file = formData.get('file') as File;
+
+      if (!file) {
+        return NextResponse.json({ error: 'Archivo requerido' }, { status: 400 });
+      }
+
+      const mimeType = file.type;
+      const buffer = Buffer.from(await file.arrayBuffer());
+
+      // Extract text based on file type
+      if (mimeType === 'application/pdf' || file.name.endsWith('.pdf')) {
+        const pdfParse = (await import('pdf-parse')).default;
+        const data = await pdfParse(buffer);
+        textoExamen = data.text;
+      } else if (
+        mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        file.name.endsWith('.docx')
+      ) {
+        const mammoth = await import('mammoth');
+        const result = await mammoth.extractRawText({ buffer });
+        textoExamen = result.value;
+      } else if (file.name.endsWith('.doc')) {
+        return NextResponse.json({
+          error: 'El formato .doc antiguo no está soportado. Por favor convierte el archivo a .docx o PDF.'
+        }, { status: 400 });
+      } else {
+        return NextResponse.json({ error: 'Formato no soportado. Usa PDF o DOCX.' }, { status: 400 });
+      }
     }
 
     if (!textoExamen.trim()) {

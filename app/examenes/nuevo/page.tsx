@@ -32,20 +32,55 @@ export default function NuevoExamenPage() {
   const [esAdmision, setEsAdmision] = useState(false);
   const [preguntas, setPreguntas] = useState<Pregunta[]>([]);
 
-  // ─── Step 1: Upload and process PDF ─────────────────────────────────────────
+  // ─── Step 1: Upload and process PDF / DOCX ──────────────────────────────────
   async function handleProcesar() {
     if (!file) return;
     setProcesando(true);
     setError('');
     try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const res = await fetch('/api/examenes/procesar-pdf', { method: 'POST', body: fd });
+      let res: Response;
+
+      // For Word (.docx): extract text directly in browser so we send ~8KB instead of 4.7MB (avoids Vercel 413 Payload limit)
+      if (file.name.toLowerCase().endsWith('.docx')) {
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          // @ts-expect-error mammoth browser bundle
+          const mammothModule = await import('mammoth/mammoth.browser.js');
+          const mammothBrowser = mammothModule.default || mammothModule;
+          const { value: extractedText } = await mammothBrowser.extractRawText({ arrayBuffer });
+
+          if (!extractedText || !extractedText.trim()) {
+            setError('No se pudo extraer texto del documento Word. Verifica que tenga contenido legible.');
+            setProcesando(false);
+            return;
+          }
+
+          res = await fetch('/api/examenes/procesar-pdf', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              texto: extractedText,
+              nombreArchivo: file.name,
+            }),
+          });
+        } catch (docxErr) {
+          console.warn('Fallback a subida normal de archivo:', docxErr);
+          const fd = new FormData();
+          fd.append('file', file);
+          res = await fetch('/api/examenes/procesar-pdf', { method: 'POST', body: fd });
+        }
+      } else {
+        // PDF or other formats
+        const fd = new FormData();
+        fd.append('file', file);
+        res = await fetch('/api/examenes/procesar-pdf', { method: 'POST', body: fd });
+      }
+
       let data: any = null;
       try {
         data = await res.json();
       } catch (_) {
-        setError(`Error del servidor (${res.status} ${res.statusText || 'Respuesta no válida'}). Verifica las variables de entorno en Vercel.`);
+        setError(`Error del servidor (${res.status} ${res.statusText || 'Respuesta no válida'}).`);
         return;
       }
 
@@ -56,7 +91,7 @@ export default function NuevoExamenPage() {
       setPreguntas(data.preguntas);
       setStep('review');
     } catch (err: any) {
-      setError(`Error de conexión: ${err?.message || 'Verifica tu red o variables en Vercel'}`);
+      setError(`Error de procesamiento: ${err?.message || 'Verifica tu red o variables en Vercel'}`);
     } finally {
       setProcesando(false);
     }
