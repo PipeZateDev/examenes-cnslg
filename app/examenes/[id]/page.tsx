@@ -88,6 +88,17 @@ export default async function ExamenDetailPage({ params }: { params: Promise<{ i
               </div>
             )}
           </div>
+
+          {Array.isArray(examen.cursos) && examen.cursos.length > 0 && (
+            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-2 flex-wrap text-xs">
+              <span className="font-bold text-slate-500">👥 Cursos asignados:</span>
+              {examen.cursos.map((c: string) => (
+                <span key={c} className="bg-blue-50 border border-blue-200 text-blue-800 font-semibold px-2 py-0.5 rounded-md">
+                  {c}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Actions (client component) */}
@@ -106,6 +117,11 @@ export default async function ExamenDetailPage({ params }: { params: Promise<{ i
           estado={examen.estado as string}
           esAdmision={!!examen.esAdmision}
           initialPreguntas={preguntas as any}
+          initialTitulo={(examen.titulo as string) || ''}
+          initialMateria={(examen.materia as string) || ''}
+          initialDescripcion={(examen.descripcion as string) || ''}
+          initialDuracionMinutos={examen.duracionMinutos !== undefined && examen.duracionMinutos !== null ? Number(examen.duracionMinutos) : null}
+          initialCursos={(examen.cursos as string[]) || []}
         />
       </div>
     </div>

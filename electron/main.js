@@ -172,6 +172,13 @@ ipcMain.handle('exam-finished', async () => {
   return { ok: true };
 });
 
+// IPC: close app immediately from renderer when exam is submitted / finished
+ipcMain.handle('close-app', async () => {
+  isLocked = false;
+  app.quit();
+  return { ok: true };
+});
+
 // IPC: request close (admin wants to close from another PC)
 ipcMain.handle('request-close', async (event, code) => {
   const valid = await verifyCloseCode(code);

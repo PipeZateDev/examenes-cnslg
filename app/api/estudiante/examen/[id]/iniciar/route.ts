@@ -47,6 +47,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // Create or resume in-progress attempt
   let intentoId: string;
+  let iniciadoEnDate: Date;
   const inProgress = await db.collection('ex_intentos').findOne({
     examenId: id,
     estudianteId: session.username,
@@ -55,18 +56,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   if (inProgress) {
     intentoId = inProgress._id.toString();
+    iniciadoEnDate = inProgress.iniciadoEn ? new Date(inProgress.iniciadoEn) : new Date();
   } else {
+    iniciadoEnDate = new Date();
     const result = await db.collection('ex_intentos').insertOne({
       examenId: id,
       estudianteId: session.username,
       estudianteNombre: session.nombre,
       estado: 'en_progreso',
-      iniciadoEn: new Date(),
+      iniciadoEn: iniciadoEnDate,
       respuestas: [],
       intentoNumero: 1,
     });
     intentoId = result.insertedId.toString();
   }
 
-  return NextResponse.json({ examen, intentoId });
+  let tiempoRestanteSegundos: number | null = null;
+  if (examen.duracionMinutos) {
+    const elapsedSecs = Math.max(0, Math.floor((Date.now() - iniciadoEnDate.getTime()) / 1000));
+    tiempoRestanteSegundos = Math.max(0, (examen.duracionMinutos * 60) - elapsedSecs);
+  }
+
+  return NextResponse.json({ examen, intentoId, tiempoRestanteSegundos });
 }
+

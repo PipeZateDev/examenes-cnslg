@@ -73,11 +73,39 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ ok: true });
   }
 
-  if (action === 'update' && hasRole(session.rol, 'docente')) {
-    const { preguntas, titulo, descripcion, materia, duracionMinutos } = data;
+  if (action === 'update') {
+    const examen = await db.collection('ex_examenes').findOne({ _id: new ObjectId(id) });
+    if (!examen) return NextResponse.json({ error: 'Examen no encontrado' }, { status: 404 });
+
+    const canEdit = session.rol === 'admin' ||
+                    hasRole(session.rol, 'directivo') ||
+                    examen.creadoPor === session.userId ||
+                    hasRole(session.rol, 'docente');
+
+    if (!canEdit) {
+      return NextResponse.json({ error: 'No tienes permisos para modificar este examen' }, { status: 403 });
+    }
+
+    const { preguntas, titulo, descripcion, materia, materiaId, duracionMinutos, cursos } = data;
+    const updateFields: Record<string, unknown> = {};
+
+    if (titulo !== undefined) updateFields.titulo = String(titulo).trim();
+    if (descripcion !== undefined) updateFields.descripcion = String(descripcion).trim();
+    if (materia !== undefined) updateFields.materia = String(materia).trim();
+    if (materiaId !== undefined) updateFields.materiaId = materiaId;
+    if (duracionMinutos !== undefined) {
+      updateFields.duracionMinutos = duracionMinutos ? Number(duracionMinutos) : null;
+    }
+    if (cursos !== undefined) {
+      updateFields.cursos = Array.isArray(cursos) ? cursos : [];
+    }
+    if (preguntas !== undefined) {
+      updateFields.preguntas = preguntas;
+    }
+
     await db.collection('ex_examenes').updateOne(
       { _id: new ObjectId(id) },
-      { $set: { preguntas, titulo, descripcion, materia, duracionMinutos } }
+      { $set: updateFields }
     );
     return NextResponse.json({ ok: true });
   }

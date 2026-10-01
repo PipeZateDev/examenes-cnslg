@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { distribuirPesos } from '@/lib/utils';
 
 export interface Opcion {
@@ -25,14 +26,43 @@ interface Props {
   estado: string;
   esAdmision: boolean;
   initialPreguntas: PreguntaItem[];
+  initialTitulo?: string;
+  initialMateria?: string;
+  initialDescripcion?: string;
+  initialDuracionMinutos?: number | null;
+  initialCursos?: string[];
 }
 
-const AREAS_ADMISION = [
-  'Matemáticas',
-  'Español',
-  'Ciencias Naturales',
-  'Ciencias Sociales',
-  'Inglés'
+const CURSOS_COLEGIO = [
+  'KINDER',
+  'TRANSICION',
+  '101',
+  '201',
+  '301',
+  '401',
+  '501',
+  '601',
+  '701',
+  '801',
+  '901',
+  '1001',
+  '1101',
+  '1102',
+];
+
+const CURSOS_ADMISION = [
+  'ADMISIÓN TRANSICIÓN',
+  'ADMISIÓN 1°',
+  'ADMISIÓN 2°',
+  'ADMISIÓN 3°',
+  'ADMISIÓN 4°',
+  'ADMISIÓN 5°',
+  'ADMISIÓN 6°',
+  'ADMISIÓN 7°',
+  'ADMISIÓN 8°',
+  'ADMISIÓN 9°',
+  'ADMISIÓN 10°',
+  'ADMISIÓN 11°',
 ];
 
 export default function ExamenEditorView({
@@ -40,8 +70,27 @@ export default function ExamenEditorView({
   estado,
   esAdmision,
   initialPreguntas,
+  initialTitulo = '',
+  initialMateria = '',
+  initialDescripcion = '',
+  initialDuracionMinutos = null,
+  initialCursos = [],
 }: Props) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
+  
+  // General configurations state
+  const [configOpen, setConfigOpen] = useState(true);
+  const [titulo, setTitulo] = useState(initialTitulo);
+  const [materia, setMateria] = useState(initialMateria);
+  const [descripcion, setDescripcion] = useState(initialDescripcion);
+  const [duracionMinutos, setDuracionMinutos] = useState<number | null>(
+    initialDuracionMinutos !== undefined ? initialDuracionMinutos : null
+  );
+  const [cursos, setCursos] = useState<string[]>(initialCursos);
+  const [nuevoCurso, setNuevoCurso] = useState('');
+
+  // Questions and UI state
   const [preguntas, setPreguntas] = useState<PreguntaItem[]>(initialPreguntas || []);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -50,6 +99,40 @@ export default function ExamenEditorView({
   // Preview state
   const [previewIdx, setPreviewIdx] = useState(0);
   const [previewRespuesta, setPreviewRespuesta] = useState<Record<number, string>>({});
+
+  const listadoCursosPredefinidos = esAdmision ? CURSOS_ADMISION : CURSOS_COLEGIO;
+
+  // Course toggling logic
+  function toggleCurso(c: string) {
+    setCursos(prev => (prev.includes(c) ? prev.filter(item => item !== c) : [...prev, c]));
+  }
+
+  function handleAddCustomCurso() {
+    const trimmed = nuevoCurso.trim().toUpperCase();
+    if (!trimmed) return;
+    if (!cursos.includes(trimmed)) {
+      setCursos(prev => [...prev, trimmed]);
+    }
+    setNuevoCurso('');
+  }
+
+  function selectPrimaria() {
+    const primaria = ['101', '201', '301', '401', '501'];
+    setCursos(prev => Array.from(new Set([...prev, ...primaria])));
+  }
+
+  function selectBachillerato() {
+    const bachi = ['601', '701', '801', '901', '1001', '1101', '1102'];
+    setCursos(prev => Array.from(new Set([...prev, ...bachi])));
+  }
+
+  function selectTodosCursos() {
+    setCursos(listadoCursosPredefinidos);
+  }
+
+  function clearCursos() {
+    setCursos([]);
+  }
 
   // Calculations for admissions vs regular weights
   const areasList = esAdmision
@@ -66,23 +149,24 @@ export default function ExamenEditorView({
 
   // Set correct answer for a question
   function handleSelectCorrecta(orden: number, letra: string) {
-    setPreguntas(prev => prev.map(p => {
-      if (p.orden === orden) {
-        return { ...p, respuestaCorrecta: p.respuestaCorrecta === letra ? null : letra };
-      }
-      return p;
-    }));
+    setPreguntas(prev =>
+      prev.map(p => {
+        if (p.orden === orden) {
+          return { ...p, respuestaCorrecta: p.respuestaCorrecta === letra ? null : letra };
+        }
+        return p;
+      })
+    );
   }
 
   // Update question field
   function handleUpdateField(orden: number, field: keyof PreguntaItem, value: any) {
-    setPreguntas(prev => prev.map(p => p.orden === orden ? { ...p, [field]: value } : p));
+    setPreguntas(prev => prev.map(p => (p.orden === orden ? { ...p, [field]: value } : p)));
   }
 
   // Auto-distribute weights
   function handleAutoDistribuirPesos() {
     if (esAdmision) {
-      // 100% per area
       setPreguntas(prev => {
         const copy = [...prev];
         const byArea = new Map<string, PreguntaItem[]>();
@@ -102,14 +186,13 @@ export default function ExamenEditorView({
       });
       setMessage({ type: 'success', text: 'Pesos distribuidos al 100% en cada una de las áreas.' });
     } else {
-      // 100% total
       const pesos = distribuirPesos(preguntas.length);
       setPreguntas(prev => prev.map((p, idx) => ({ ...p, peso: pesos[idx] })));
       setMessage({ type: 'success', text: 'Pesos distribuidos al 100% en total.' });
     }
   }
 
-  // Save changes
+  // Save changes (configurations + questions)
   async function handleGuardar() {
     setSaving(true);
     setMessage(null);
@@ -119,6 +202,11 @@ export default function ExamenEditorView({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'update',
+          titulo,
+          materia,
+          descripcion,
+          duracionMinutos: duracionMinutos ? Number(duracionMinutos) : null,
+          cursos,
           preguntas,
         }),
       });
@@ -129,7 +217,11 @@ export default function ExamenEditorView({
         return;
       }
 
-      setMessage({ type: 'success', text: '✓ Respuestas y preguntas guardadas correctamente en la base de datos.' });
+      setMessage({
+        type: 'success',
+        text: '✓ Configuración (Título, Duración, Cursos) y preguntas guardadas correctamente en la base de datos.',
+      });
+      router.refresh();
     } catch {
       setMessage({ type: 'error', text: 'Error de conexión al guardar.' });
     } finally {
@@ -137,9 +229,10 @@ export default function ExamenEditorView({
     }
   }
 
-  const preguntasFiltradas = filtroArea === 'todas'
-    ? preguntas
-    : preguntas.filter(p => (p.area || 'General') === filtroArea);
+  const preguntasFiltradas =
+    filtroArea === 'todas'
+      ? preguntas
+      : preguntas.filter(p => (p.area || 'General') === filtroArea);
 
   return (
     <div className="mt-6">
@@ -154,7 +247,7 @@ export default function ExamenEditorView({
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            ✏️ Configurar Respuestas y Pesos
+            ✏️ Configuración y Editor de Examen
           </button>
           <button
             onClick={() => setActiveTab('preview')}
@@ -181,26 +274,281 @@ export default function ExamenEditorView({
               disabled={saving}
               className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-sm font-bold px-5 py-2 rounded-lg shadow-sm transition flex items-center gap-2"
             >
-              {saving ? 'Guardando...' : '💾 Guardar Respuestas'}
+              {saving ? 'Guardando...' : '💾 Guardar Todo'}
             </button>
           </div>
         )}
       </div>
 
       {message && (
-        <div className={`p-4 rounded-xl mb-6 text-sm flex items-center justify-between ${
-          message.type === 'success'
-            ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
-            : 'bg-red-50 border border-red-200 text-red-800'
-        }`}>
+        <div
+          className={`p-4 rounded-xl mb-6 text-sm flex items-center justify-between ${
+            message.type === 'success'
+              ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+              : 'bg-red-50 border border-red-200 text-red-800'
+          }`}
+        >
           <span>{message.text}</span>
-          <button onClick={() => setMessage(null)} className="text-xs opacity-60 hover:opacity-100">✕</button>
+          <button onClick={() => setMessage(null)} className="text-xs opacity-60 hover:opacity-100">
+            ✕
+          </button>
         </div>
       )}
 
-      {/* ──────────────── TAB 1: EDITOR DE RESPUESTAS Y PESOS ──────────────── */}
+      {/* ──────────────── TAB 1: EDITOR Y CONFIGURACIÓN ──────────────── */}
       {activeTab === 'editor' && (
         <div className="space-y-6">
+          {/* ⚙️ EXAM CONFIGURATION CARD */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div
+              onClick={() => setConfigOpen(!configOpen)}
+              className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between cursor-pointer hover:bg-slate-100/80 transition"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-xl">⚙️</span>
+                <div>
+                  <h2 className="font-bold text-slate-800 text-base">Parámetros y Configuración del Examen</h2>
+                  <p className="text-xs text-slate-500">Nombre, Cursos a aplicar, Duración y Asignatura</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 text-slate-400 text-sm">
+                <span>{configOpen ? 'Plegar' : 'Desplegar'}</span>
+                <span>{configOpen ? '▲' : '▼'}</span>
+              </div>
+            </div>
+
+            {configOpen && (
+              <div className="p-6 space-y-5 bg-white">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {/* Nombre / Título */}
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                      Nombre / Título del Examen *
+                    </label>
+                    <input
+                      type="text"
+                      value={titulo}
+                      onChange={e => setTitulo(e.target.value)}
+                      placeholder="Ej: Examen Bimestral de Matemáticas - 2° Periodo"
+                      className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Materia / Asignatura */}
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                      Materia / Asignatura
+                    </label>
+                    <input
+                      type="text"
+                      value={materia}
+                      onChange={e => setMateria(e.target.value)}
+                      placeholder="Ej: Matemáticas, Ciencias Naturales, Inglés..."
+                      className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Duración */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
+                      ⏱️ Duración de la Prueba
+                    </label>
+                    <span className="text-xs text-slate-400">
+                      {duracionMinutos ? `${duracionMinutos} minutos (${Math.floor(duracionMinutos / 60)}h ${duracionMinutos % 60}m)` : 'Sin límite de tiempo'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap mb-2">
+                    {[
+                      { label: 'Sin Límite', val: null },
+                      { label: '30 min', val: 30 },
+                      { label: '45 min', val: 45 },
+                      { label: '60 min', val: 60 },
+                      { label: '90 min', val: 90 },
+                      { label: '120 min', val: 120 },
+                    ].map(preset => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => setDuracionMinutos(preset.val)}
+                        className={`text-xs px-3 py-1.5 rounded-lg border font-semibold transition ${
+                          duracionMinutos === preset.val
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                    
+                    <div className="flex items-center gap-1.5 ml-2">
+                      <span className="text-xs text-slate-500">Personalizado:</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={300}
+                        value={duracionMinutos || ''}
+                        onChange={e => setDuracionMinutos(e.target.value ? Number(e.target.value) : null)}
+                        placeholder="Minutos"
+                        className="w-20 border border-slate-300 rounded-lg px-2 py-1 text-xs text-center font-bold text-slate-800"
+                      />
+                      <span className="text-xs text-slate-400">min</span>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-500">
+                    💡 <em>Nota:</em> Durante el examen, los alumnos verán un contador regresivo. Al finalizar el tiempo, las respuestas se enviarán automáticamente y la aplicación se cerrará.
+                  </p>
+                </div>
+
+                {/* Cursos a Aplicar */}
+                <div>
+                  <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
+                      👥 Cursos a los que aplica este Examen
+                    </label>
+                    <div className="flex items-center gap-2 text-xs">
+                      {!esAdmision && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={selectPrimaria}
+                            className="text-blue-600 hover:underline font-medium"
+                          >
+                            + Primaria (101-501)
+                          </button>
+                          <span className="text-slate-300">|</span>
+                          <button
+                            type="button"
+                            onClick={selectBachillerato}
+                            className="text-blue-600 hover:underline font-medium"
+                          >
+                            + Bachillerato (601-1102)
+                          </button>
+                          <span className="text-slate-300">|</span>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        onClick={selectTodosCursos}
+                        className="text-blue-600 hover:underline font-medium"
+                      >
+                        Todos
+                      </button>
+                      <span className="text-slate-300">|</span>
+                      <button
+                        type="button"
+                        onClick={clearCursos}
+                        className="text-red-500 hover:underline font-medium"
+                      >
+                        Limpiar
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Chips grid */}
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {listadoCursosPredefinidos.map(c => {
+                      const isSelected = cursos.includes(c);
+                      return (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => toggleCurso(c)}
+                          className={`px-3 py-1 rounded-lg text-xs font-bold border transition ${
+                            isSelected
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50 hover:border-slate-400'
+                          }`}
+                        >
+                          {isSelected ? '✓ ' : ''}{c}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Custom courses if any were added */}
+                  {cursos.some(c => !listadoCursosPredefinidos.includes(c)) && (
+                    <div className="mb-3">
+                      <p className="text-xs text-slate-400 font-semibold mb-1">Cursos personalizados agregados:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {cursos
+                          .filter(c => !listadoCursosPredefinidos.includes(c))
+                          .map(c => (
+                            <span
+                              key={c}
+                              className="bg-purple-100 text-purple-800 border border-purple-200 px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5"
+                            >
+                              ✓ {c}
+                              <button
+                                type="button"
+                                onClick={() => toggleCurso(c)}
+                                className="text-purple-500 hover:text-purple-800 font-bold ml-1"
+                              >
+                                ✕
+                              </button>
+                            </span>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Add custom course */}
+                  <div className="flex items-center gap-2 max-w-sm">
+                    <input
+                      type="text"
+                      value={nuevoCurso}
+                      onChange={e => setNuevoCurso(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddCustomCurso();
+                        }
+                      }}
+                      placeholder="Agregar otro curso / código (ej: 802)..."
+                      className="border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-800 flex-1 uppercase"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddCustomCurso}
+                      className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-1.5 rounded-lg text-xs border border-slate-300 transition"
+                    >
+                      + Añadir
+                    </button>
+                  </div>
+                </div>
+
+                {/* Descripción / Instrucciones */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                    Descripción / Instrucciones para el Estudiante
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={descripcion}
+                    onChange={e => setDescripcion(e.target.value)}
+                    placeholder="Instrucciones generales del examen, recomendaciones pedagógicas, etc."
+                    className="w-full border border-slate-300 rounded-xl p-3 text-xs text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+
+                {/* Save parameters quick button */}
+                <div className="pt-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleGuardar}
+                    disabled={saving}
+                    className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-xs font-bold px-4 py-2 rounded-lg shadow-sm transition flex items-center gap-1.5"
+                  >
+                    {saving ? 'Guardando...' : '💾 Guardar Parámetros y Preguntas'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Instructions banner */}
           <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-sm text-blue-900 flex items-start gap-3">
             <span className="text-2xl flex-shrink-0">💡</span>
@@ -268,9 +616,7 @@ export default function ExamenEditorView({
               <div
                 key={p.orden}
                 className={`bg-white rounded-2xl shadow p-6 border-l-4 transition ${
-                  p.respuestaCorrecta
-                    ? 'border-emerald-500'
-                    : 'border-amber-400'
+                  p.respuestaCorrecta ? 'border-emerald-500' : 'border-amber-400'
                 }`}
               >
                 {/* Header row */}
@@ -415,10 +761,14 @@ export default function ExamenEditorView({
           <div className="sticky bottom-4 bg-white/95 backdrop-blur-md border border-slate-200 rounded-2xl shadow-xl p-4 flex items-center justify-between flex-wrap gap-4 z-20">
             <div>
               <p className="text-sm font-bold text-slate-800">
-                {preguntas.filter(p => !!p.respuestaCorrecta).length} de {preguntas.length} respuestas correctas asignadas
+                {preguntas.filter(p => !p.respuestaCorrecta).length === 0
+                  ? '✅ Todas las preguntas tienen respuesta correcta'
+                  : `${preguntas.filter(p => !!p.respuestaCorrecta).length} de ${preguntas.length} respuestas correctas asignadas`}
               </p>
               <p className="text-xs text-slate-500">
                 {esAdmision ? 'Ponderación dividida en las 5 áreas básicas' : `Ponderación total: ${pesoTotalGeneral}%`}
+                {duracionMinutos ? ` • Duración: ${duracionMinutos} min` : ' • Sin límite de tiempo'}
+                {cursos.length > 0 ? ` • ${cursos.length} cursos seleccionados` : ''}
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -443,14 +793,20 @@ export default function ExamenEditorView({
       {/* ──────────────── TAB 2: VISTA PREVIA EN VIVO (SIMULADOR) ──────────────── */}
       {activeTab === 'preview' && (
         <div className="bg-slate-900 rounded-3xl p-6 shadow-2xl text-white">
-          <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-6">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-6 flex-wrap gap-3">
+            <div className="flex items-center gap-3">
               <span className="text-xs bg-emerald-500 text-slate-900 font-bold px-2.5 py-1 rounded-full uppercase">
                 Simulador de Pantalla de Estudiante
               </span>
+              <span className="text-sm font-semibold text-slate-300">{titulo || 'Sin título'}</span>
             </div>
-            <div className="text-xs text-slate-400">
-              Pregunta {previewIdx + 1} de {preguntas.length}
+            <div className="flex items-center gap-4 text-xs text-slate-400">
+              {duracionMinutos && (
+                <span className="text-amber-300 font-mono font-bold">
+                  ⏱️ {duracionMinutos}:00
+                </span>
+              )}
+              <span>Pregunta {previewIdx + 1} de {preguntas.length}</span>
             </div>
           </div>
 
@@ -495,10 +851,12 @@ export default function ExamenEditorView({
                   return (
                     <button
                       key={op.letra}
-                      onClick={() => setPreviewRespuesta(prev => ({
-                        ...prev,
-                        [preguntas[previewIdx].orden]: op.letra
-                      }))}
+                      onClick={() =>
+                        setPreviewRespuesta(prev => ({
+                          ...prev,
+                          [preguntas[previewIdx].orden]: op.letra,
+                        }))
+                      }
                       className={`w-full text-left flex items-start gap-4 px-5 py-3.5 rounded-2xl border-2 transition ${
                         isSelected
                           ? 'border-blue-600 bg-blue-50 text-blue-900 shadow-sm'
