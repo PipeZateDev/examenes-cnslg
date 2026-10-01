@@ -23,10 +23,9 @@ export default async function ExamenDetailPage({ params }: { params: Promise<{ i
   const claveDoc = await db.collection('ex_clave_dia').findOne({ fecha: hoy() });
   const examenClave = (claveDoc?.examenesClaves as Array<{ examenId: string; clave: string }>)?.find(e => e.examenId === id);
 
-  // Count submitted attempts
+  // Count any student attempts
   const totalIntentos = await db.collection('ex_intentos').countDocuments({
     examenId: id,
-    estado: 'enviado',
   });
 
   const preguntas = examen.preguntas as Array<{
@@ -95,6 +94,7 @@ export default async function ExamenDetailPage({ params }: { params: Promise<{ i
         <ExamenActions
           examenId={id}
           estado={examen.estado as string}
+          totalIntentos={totalIntentos}
           esAdmin={session.rol === 'admin'}
           esDirectivo={['admin', 'directivo'].includes(session.rol)}
           esDocente={['admin', 'directivo', 'coordinador', 'supervisor', 'docente'].includes(session.rol)}

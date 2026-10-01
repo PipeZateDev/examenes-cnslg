@@ -7,12 +7,13 @@ import Link from 'next/link';
 interface ExamenActionsProps {
   examenId: string;
   estado: string;
+  totalIntentos?: number;
   esAdmin: boolean;
   esDirectivo: boolean;
   esDocente: boolean;
 }
 
-export default function ExamenActions({ examenId, estado, esAdmin, esDirectivo, esDocente }: ExamenActionsProps) {
+export default function ExamenActions({ examenId, estado, totalIntentos = 0, esAdmin, esDirectivo, esDocente }: ExamenActionsProps) {
   const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -107,35 +108,58 @@ export default function ExamenActions({ examenId, estado, esAdmin, esDirectivo, 
           📊 Ver Resultados
         </Link>
 
-        {/* Delete (docentes and above) */}
-        {esDocente && (
-          <button
-            onClick={async () => {
-              if (confirm('¿Estás seguro de eliminar este examen permanentemente? Se eliminarán también los intentos registrados.')) {
-                setLoading('delete');
-                try {
-                  const res = await fetch(`/api/examenes/${examenId}`, {
-                    method: 'DELETE',
-                  });
-                  if (!res.ok) {
+        {/* Delete exam logic */}
+        {(() => {
+          // If exam has student attempts: CANNOT be deleted
+          if ((totalIntentos || 0) > 0) {
+            return (
+              <span
+                className="px-3 py-2 bg-slate-100 text-slate-400 border border-slate-200 rounded-lg text-xs font-medium flex items-center gap-1 cursor-not-allowed select-none"
+                title="Este examen tiene respuestas de estudiantes y no puede eliminarse."
+              >
+                🔒 Con respuestas ({totalIntentos})
+              </span>
+            );
+          }
+
+          // If approved/active/closed: only directivo or admin can delete
+          const esAprobado = ['aprobado', 'activo', 'cerrado'].includes(estado);
+          if (esAprobado && !esDirectivo) {
+            return null; // Docentes and coordinadores cannot see or delete approved exams
+          }
+
+          // In borrador/pendiente: docentes and above can delete
+          if (!esDocente) return null;
+
+          return (
+            <button
+              onClick={async () => {
+                if (confirm('¿Estás seguro de eliminar este examen permanentemente? Esta acción no se puede deshacer.')) {
+                  setLoading('delete');
+                  try {
+                    const res = await fetch(`/api/examenes/${examenId}`, {
+                      method: 'DELETE',
+                    });
                     const data = await res.json();
-                    setError(data.error || 'Error al eliminar');
-                    return;
+                    if (!res.ok) {
+                      setError(data.error || 'Error al eliminar');
+                      return;
+                    }
+                    router.push('/examenes');
+                  } catch {
+                    setError('Error de conexión al eliminar');
+                  } finally {
+                    setLoading(null);
                   }
-                  router.push('/examenes');
-                } catch {
-                  setError('Error de conexión al eliminar');
-                } finally {
-                  setLoading(null);
                 }
-              }
-            }}
-            disabled={!!loading}
-            className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 border border-red-200 rounded-lg text-sm font-semibold transition disabled:opacity-50 flex items-center gap-1"
-          >
-            {loading === 'delete' ? 'Eliminando...' : '🗑 Eliminar Examen'}
-          </button>
-        )}
+              }}
+              disabled={!!loading}
+              className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 border border-red-200 rounded-lg text-sm font-semibold transition disabled:opacity-50 flex items-center gap-1"
+            >
+              {loading === 'delete' ? 'Eliminando...' : '🗑 Eliminar Examen'}
+            </button>
+          );
+        })()}
       </div>
     </div>
   );

@@ -98,7 +98,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   return NextResponse.json({ error: 'Acción no válida' }, { status: 400 });
 }
 
-// DELETE /api/examenes/[id] - docentes and above
+// DELETE /api/examenes/[id]
+// Reglas:
+// 1. Solo se puede borrar si NO tiene respuestas de estudiantes.
+// 2. Si ya fue aprobado (aprobado, activo, cerrado), NO lo pueden borrar docentes ni coordinadores; solo directivos o admins.
+// 3. En estado borrador o pendiente_aprobacion, docentes y superiores pueden borrarlo si no tiene respuestas.
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await getSessionFromRequest(req);
@@ -107,7 +111,30 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   }
 
   const db = await getDb();
+  const examen = await db.collection('ex_examenes').findOne({ _id: new ObjectId(id) });
+  if (!examen) {
+    return NextResponse.json({ error: 'Examen no encontrado' }, { status: 404 });
+  }
+
+  // Regla 1: Validar si el examen tiene intentos/respuestas
+  const intentosCount = await db.collection('ex_intentos').countDocuments({ examenId: id });
+  if (intentosCount > 0) {
+    return NextResponse.json({
+      error: 'El examen no se puede borrar porque ya tiene respuestas e intentos de estudiantes registrados.'
+    }, { status: 400 });
+  }
+
+  // Regla 2: Si el examen ya está aprobado, activo o cerrado, coordinadores y docentes no pueden borrarlo
+  const estadosAprobados = ['aprobado', 'activo', 'cerrado'];
+  if (estadosAprobados.includes(examen.estado as string)) {
+    if (!hasRole(session.rol, 'directivo')) {
+      return NextResponse.json({
+        error: 'Este examen ya fue aprobado y no puede ser borrado por docentes ni coordinadores. Solo directivos o administradores pueden gestionarlo.'
+      }, { status: 403 });
+    }
+  }
+
+  // Eliminar examen de la base de datos
   await db.collection('ex_examenes').deleteOne({ _id: new ObjectId(id) });
-  await db.collection('ex_intentos').deleteMany({ examenId: id });
   return NextResponse.json({ ok: true });
 }
