@@ -6,7 +6,7 @@ import EstudiantesManager from './EstudiantesManager';
 export default async function EstudiantesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; curso?: string; admision?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; curso?: string; admision?: string; tab?: string; page?: string }>;
 }) {
   const session = await getSession();
   if (!session) redirect('/login');
@@ -15,7 +15,7 @@ export default async function EstudiantesPage({
   const params = await searchParams;
   const q = params.q || '';
   const cursoFilter = params.curso || '';
-  const admisionFilter = params.admision || '';
+  const tab = (params.tab === 'aspirantes' || params.tab === 'cursos') ? params.tab : 'estudiantes';
   const page = Math.max(1, Number(params.page || 1));
   const limit = 48;
   const skip = (page - 1) * limit;
@@ -33,29 +33,31 @@ export default async function EstudiantesPage({
     filter.curso = cursoFilter;
   }
 
-  if (admisionFilter === '1') {
+  if (tab === 'aspirantes') {
     filter.esAdmision = true;
-  } else if (admisionFilter === '0') {
+  } else if (tab === 'estudiantes') {
     filter.esAdmision = { $ne: true };
   }
 
-  let db = null;
+  const dbExamenes = await getDb();
+  let dbReportes = null;
   try {
-    db = await getDbReportes();
+    dbReportes = await getDbReportes();
   } catch (_) {}
-  if (!db) {
-    db = await getDb();
-  }
 
-  const [estudiantesDocs, total, cursosDocs] = await Promise.all([
-    db.collection('students')
+  const dbToQuery = tab === 'aspirantes' ? dbExamenes : (dbReportes || dbExamenes);
+
+  const [estudiantesDocs, total, totalAspirantes, totalRegulares, cursosDocs] = await Promise.all([
+    dbToQuery.collection('students')
       .find(filter)
       .sort({ nombreCompleto: 1 })
       .skip(skip)
       .limit(limit)
       .toArray(),
-    db.collection('students').countDocuments(filter),
-    db.collection('courses').find({}).sort({ nombre: 1 }).toArray(),
+    dbToQuery.collection('students').countDocuments(filter),
+    dbExamenes.collection('students').countDocuments({ esAdmision: true }),
+    (dbReportes || dbExamenes).collection('students').countDocuments({ esAdmision: { $ne: true } }),
+    dbExamenes.collection('courses').find({}).sort({ nombre: 1 }).toArray(),
   ]);
 
   const estudiantes = estudiantesDocs.map(est => ({
@@ -88,14 +90,15 @@ export default async function EstudiantesPage({
     <EstudiantesManager
       initialEstudiantes={estudiantes}
       initialCursos={cursos}
+      initialTab={tab}
       total={total}
+      totalRegulares={totalRegulares}
+      totalAspirantes={totalAspirantes}
       page={page}
       totalPages={totalPages}
       query={q}
       cursoFilter={cursoFilter}
-      admisionFilter={admisionFilter}
       canEdit={canEdit}
     />
   );
 }
-

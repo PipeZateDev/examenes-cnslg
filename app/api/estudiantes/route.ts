@@ -12,10 +12,16 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const q = searchParams.get('q')?.trim() || '';
   const curso = searchParams.get('curso')?.trim() || '';
-  const esAdmision = searchParams.get('admision');
+  const esAdmisionParam = searchParams.get('admision'); // '1' for Aspirantes, '0' for Regulares
   const page = Math.max(1, Number(searchParams.get('page') || 1));
   const limit = Math.min(100, Math.max(1, Number(searchParams.get('limit') || 50)));
   const skip = (page - 1) * limit;
+
+  const dbExamenes = await getDb();
+  let dbReportes = null;
+  try {
+    dbReportes = await getDbReportes();
+  } catch (_) {}
 
   const filter: Record<string, unknown> = {};
 
@@ -32,39 +38,44 @@ export async function GET(req: NextRequest) {
     filter.curso = curso;
   }
 
-  if (esAdmision === '1') {
+  let dbToQuery = dbExamenes;
+
+  if (esAdmisionParam === '1') {
+    // Aspirantes -> Exclusively stored in examenes DB
     filter.esAdmision = true;
-  } else if (esAdmision === '0') {
+    dbToQuery = dbExamenes;
+  } else if (esAdmisionParam === '0') {
+    // Regulares -> Matriculados en el colegio
     filter.esAdmision = { $ne: true };
+    dbToQuery = dbReportes || dbExamenes;
+  } else {
+    // All
+    dbToQuery = dbReportes || dbExamenes;
   }
 
-  let db = null;
-  try {
-    db = await getDbReportes();
-  } catch (_) {}
-  if (!db) {
-    db = await getDb();
-  }
-
-  const [estudiantes, total] = await Promise.all([
-    db.collection('students')
+  const [estudiantes, total, totalAspirantes, totalRegulares] = await Promise.all([
+    dbToQuery.collection('students')
       .find(filter)
       .sort({ nombreCompleto: 1 })
       .skip(skip)
       .limit(limit)
       .toArray(),
-    db.collection('students').countDocuments(filter),
+    dbToQuery.collection('students').countDocuments(filter),
+    dbExamenes.collection('students').countDocuments({ esAdmision: true }),
+    (dbReportes || dbExamenes).collection('students').countDocuments({ esAdmision: { $ne: true } }),
   ]);
 
   return NextResponse.json({
     estudiantes,
     total,
+    totalAspirantes,
+    totalRegulares,
     page,
     totalPages: Math.ceil(total / limit),
   });
 }
 
-// POST /api/estudiantes - Create new student directly in MongoDB
+// POST /api/estudiantes - Create new student or aspirante directly in MongoDB
 export async function POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session || !hasRole(session.rol, 'coordinador')) {
@@ -80,6 +91,7 @@ export async function POST(req: NextRequest) {
 
   const cleanDoc = String(numeroDocumento).trim();
   const cleanNombre = String(nombreCompleto).trim().toUpperCase();
+  const isAspirante = Boolean(esAdmision);
 
   const studentDoc = {
     numeroDocumento: cleanDoc,
@@ -88,38 +100,46 @@ export async function POST(req: NextRequest) {
     nombres: nombres ? String(nombres).trim().toUpperCase() : cleanNombre.split(' ')[0] || '',
     apellidos: apellidos ? String(apellidos).trim().toUpperCase() : cleanNombre.split(' ').slice(1).join(' ') || '',
     curso: curso ? String(curso).trim() : '',
-    grado: grado ? String(grado).trim() : '',
-    esAdmision: Boolean(esAdmision),
+    grado: grado ? String(grado).trim() : (curso ? String(curso).trim() : ''),
+    esAdmision: isAspirante,
     activo: activo !== false,
     creadoPor: session.nombre || session.username,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
 
-  // Upsert in reportes-cnslg database
-  try {
-    const dbReportes = await getDbReportes();
-    await dbReportes.collection('students').updateOne(
-      { numeroDocumento: cleanDoc },
-      { $set: studentDoc },
-      { upsert: true }
-    );
-  } catch (err) {
-    console.warn('Could not write to reportes DB:', err);
-  }
+  const dbExamenes = await getDb();
 
-  // Also write to examenes-cnslg database to keep them synced
-  try {
-    const dbExamenes = await getDb();
+  if (isAspirante) {
+    // ASPIRANTE: Save exclusively in examenes-cnslg database to keep them segregated from official enrollment
     await dbExamenes.collection('students').updateOne(
       { numeroDocumento: cleanDoc },
       { $set: studentDoc },
       { upsert: true }
     );
-  } catch (err) {
-    console.warn('Could not write to examenes DB:', err);
+  } else {
+    // REGULAR ENROLLED STUDENT: Upsert in reportes and examenes DBs
+    try {
+      const dbReportes = await getDbReportes();
+      await dbReportes.collection('students').updateOne(
+        { numeroDocumento: cleanDoc },
+        { $set: studentDoc },
+        { upsert: true }
+      );
+    } catch (err) {
+      console.warn('Could not write regular student to reportes DB:', err);
+    }
+
+    try {
+      await dbExamenes.collection('students').updateOne(
+        { numeroDocumento: cleanDoc },
+        { $set: studentDoc },
+        { upsert: true }
+      );
+    } catch (err) {
+      console.warn('Could not write regular student to examenes DB:', err);
+    }
   }
 
   return NextResponse.json({ ok: true, student: studentDoc }, { status: 201 });
 }
-

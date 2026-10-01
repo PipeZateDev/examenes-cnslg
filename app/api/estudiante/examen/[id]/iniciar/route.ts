@@ -36,6 +36,33 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Examen no encontrado o no activo' }, { status: 404 });
   }
 
+  // 1.5 Check aspirante vs regular student authorization
+  let student = await db.collection('students').findOne({ numeroDocumento: studentId });
+  if (!student) {
+    try {
+      const { getDbReportes } = await import('@/lib/mongodb');
+      const dbReportes = await getDbReportes();
+      student = await dbReportes.collection('students').findOne({ numeroDocumento: studentId });
+    } catch (_) {}
+  }
+
+  if (student) {
+    const isAspirante = Boolean(student.esAdmision);
+    const isExamenAdmision = Boolean(examen.esAdmision);
+
+    if (isAspirante && !isExamenAdmision) {
+      return NextResponse.json({
+        error: 'Tu usuario está registrado como aspirante al proceso de admisión. Únicamente puedes presentar pruebas diagnósticas de admisión.',
+      }, { status: 403 });
+    }
+
+    if (!isAspirante && isExamenAdmision) {
+      return NextResponse.json({
+        error: 'Este examen es exclusivo para aspirantes al proceso de admisión. Los estudiantes regulares no pueden presentar pruebas de admisión.',
+      }, { status: 403 });
+    }
+  }
+
   // 2. Check completed attempts and authorized limit
   const intentosCompletados = await db.collection('ex_intentos').countDocuments({
     examenId: id,

@@ -36,29 +36,33 @@ export async function POST(req: Request) {
       }, { status: 403 });
     }
 
-    // 1. Verify student exists in reportes (or fallback to examenes db)
-    let student = null;
-    try {
-      const dbReportes = await getDbReportes();
-      student = await dbReportes.collection('students').findOne({
-        numeroDocumento: docStr,
-      });
-    } catch (_) {}
+    // 1. Verify student exists in examenes or reportes DB
+    const db = await getDb();
+    let student = await db.collection('students').findOne({
+      numeroDocumento: docStr,
+    });
 
     if (!student) {
-      const db = await getDb();
-      student = await db.collection('students').findOne({
-        numeroDocumento: docStr,
-      });
+      try {
+        const dbReportes = await getDbReportes();
+        student = await dbReportes.collection('students').findOne({
+          numeroDocumento: docStr,
+        });
+      } catch (_) {}
     }
 
     if (!student) {
       return NextResponse.json({
-        error: 'Número de documento no encontrado en el sistema de estudiantes. Verifica que esté bien escrito.',
+        error: 'Número de documento no encontrado en el sistema. Verifica que esté bien escrito o consulta con tu docente o admisiones.',
       }, { status: 401 });
     }
 
-    const db = await getDb();
+    if (student.activo === false) {
+      return NextResponse.json({
+        error: 'El estudiante o aspirante se encuentra inactivo en el sistema. Consulta con la coordinación.',
+      }, { status: 403 });
+    }
+
     const today = hoy();
 
     // 2. Identify the active exam corresponding to the unique access code
@@ -110,6 +114,40 @@ export async function POST(req: Request) {
       return NextResponse.json({
         error: 'Código de examen incorrecto o no se encuentra activo ningún examen con este código hoy. Por favor verifica con tu docente.',
       }, { status: 404 });
+    }
+
+    // 2.5 Strict Admission vs Regular Exam Check
+    const isAspirante = Boolean(student.esAdmision);
+    const isExamenAdmision = Boolean(examen.esAdmision);
+
+    if (isAspirante && !isExamenAdmision) {
+      return NextResponse.json({
+        error: 'Tu usuario está registrado como aspirante al proceso de admisión. Únicamente puedes presentar pruebas diagnósticas de admisión.',
+      }, { status: 403 });
+    }
+
+    if (!isAspirante && isExamenAdmision) {
+      return NextResponse.json({
+        error: 'Este examen es exclusivo para aspirantes al proceso de admisión. Los estudiantes matriculados regulares no pueden presentar pruebas de admisión.',
+      }, { status: 403 });
+    }
+
+    // Course verification for regular students
+    if (!isAspirante && Array.isArray(examen.cursos) && examen.cursos.length > 0) {
+      const studentCurso = String(student.curso || student.grado || '').trim().toLowerCase();
+      const allowedCursos = examen.cursos.map((c: string) => String(c).trim().toLowerCase());
+
+      const isCourseAllowed = allowedCursos.some((c: string) => 
+        c === studentCurso ||
+        (studentCurso && c.includes(studentCurso)) ||
+        (studentCurso && studentCurso.includes(c))
+      );
+
+      if (!isCourseAllowed && studentCurso) {
+        return NextResponse.json({
+          error: `Este examen está asignado a los cursos (${examen.cursos.join(', ')}). Tu curso registrado es ${student.curso || student.grado}, por lo que no estás habilitado para esta prueba.`,
+        }, { status: 403 });
+      }
     }
 
     const finalExamenId = examen._id.toString();
