@@ -54,45 +54,65 @@ export async function POST(req: NextRequest) {
     // Call Gemini AI
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
     
-    const prompt = `Eres un asistente especializado en extraer preguntas de exámenes académicos.
+    const prompt = `Eres un asistente especializado en digitalizar exámenes académicos para convertirlos en pruebas digitales evaluables pregunta por pregunta.
 
-Analiza el siguiente texto de un examen y extrae TODAS las preguntas de selección múltiple.
-
-Para cada pregunta, devuelve:
-- enunciado: el texto completo de la pregunta
-- opciones: array de opciones, cada una con "letra" (A, B, C, D, o E) y "texto"
-- notas: cualquier nota adicional importante (o null si no hay)
+Analiza el siguiente texto de un examen y conviértelo en una lista de preguntas digitales estructuradas.
+Para cada pregunta o actividad del examen:
+- enunciado: redacción clara de la pregunta o instrucción.
+- opciones: array de opciones con "letra" (A, B, C, D) y "texto". Si el examen original no tiene opciones explícitas (por ejemplo actividades de preescolar/kinder, ejercicios de completar o preguntas abiertas), formula opciones pertinentes de selección múltiple que permitan evaluar la actividad.
+- notas: nota explicativa o criterio de evaluación (o null si no hay).
 
 Devuelve SOLO un JSON válido con esta estructura exacta:
 {
-  "titulo": "título del examen si lo encuentras, sino null",
-  "materia": "materia/asignatura si la encuentras, sino null",
+  "titulo": "título del examen",
+  "materia": "materia o área",
   "preguntas": [
     {
-      "enunciado": "texto de la pregunta",
+      "enunciado": "texto de la pregunta o actividad",
       "opciones": [
-        {"letra": "A", "texto": "texto opción A"},
-        {"letra": "B", "texto": "texto opción B"},
-        {"letra": "C", "texto": "texto opción C"},
-        {"letra": "D", "texto": "texto opción D"}
+        {"letra": "A", "texto": "opción A"},
+        {"letra": "B", "texto": "opción B"},
+        {"letra": "C", "texto": "opción C"},
+        {"letra": "D", "texto": "opción D"}
       ],
       "notas": null
     }
   ]
 }
 
-Si una pregunta no tiene opciones bien definidas, inclúyela igual con las opciones que puedas inferir.
-Si el texto no contiene preguntas de selección múltiple, devuelve preguntas: [].
-
 TEXTO DEL EXAMEN:
 ${textoExamen}`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: prompt,
-    });
+    // Resilient fallback chain for model availability and transient demand spikes
+    const modelsToTry = [
+      'gemini-3.8-flash',
+      'gemini-3.5-flash',
+      'gemini-3-flash-preview',
+      'gemini-flash-latest'
+    ];
 
-    const rawText = response.text || '';
+    let rawText = '';
+    let lastError: Error | null = null;
+
+    for (const modelName of modelsToTry) {
+      try {
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents: prompt,
+        });
+        if (response.text) {
+          rawText = response.text;
+          break;
+        }
+      } catch (err) {
+        lastError = err as Error;
+        console.warn(`Modelo ${modelName} falló, intentando siguiente...`, (err as Error).message);
+      }
+    }
+
+    if (!rawText) {
+      throw new Error(lastError?.message || 'No se pudo obtener respuesta de ningún modelo de IA');
+    }
     
     // Extract JSON from response
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
