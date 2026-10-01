@@ -62,23 +62,19 @@ export async function GET(req: NextRequest) {
     dbCourses = await dbExamenes.collection('courses').find({}).toArray();
   }
 
-  // Combine with default CNSLG courses to make sure all grades are present
-  const existingCourseNames = new Set(dbCourses.map(c => String(c.nombre).trim().toLowerCase()));
-  const allCoursesList: Array<{ _id?: string; nombre: string; anioLectivo?: number; totalEstudiantes?: number }> = [
-    ...dbCourses.map(c => ({
+  // Course list from DB, or defaults if DB has no courses
+  let allCoursesList: Array<{ _id?: string; nombre: string; anioLectivo?: number; totalEstudiantes?: number }> = [];
+  if (dbCourses && dbCourses.length > 0) {
+    allCoursesList = dbCourses.map(c => ({
       _id: c._id.toString(),
       nombre: String(c.nombre).trim(),
       anioLectivo: c.anioLectivo,
-    }))
-  ];
-
-  DEFAULT_CNSLG_COURSES.forEach(defName => {
-    if (!existingCourseNames.has(defName.toLowerCase())) {
-      allCoursesList.push({
-        nombre: defName,
-      });
-    }
-  });
+    }));
+  } else {
+    allCoursesList = DEFAULT_CNSLG_COURSES.map(defName => ({
+      nombre: defName,
+    }));
+  }
 
   // 2. Count students per course in MongoDB
   const [studentCounts, sinCursoCount, totalEstudiantes] = await Promise.all([

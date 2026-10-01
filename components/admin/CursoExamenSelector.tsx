@@ -95,15 +95,12 @@ export default function CursoExamenSelector({
       if (!isMounted) return;
 
       const loadedCourses: CursoItem[] = cursosRes.cursos || [];
-      // Combine with standard courses to ensure full grade coverage
-      const existingNames = new Set(loadedCourses.map(c => cleanCourseName(c.nombre).toLowerCase()));
-      const combined = [...loadedCourses];
+      const combined = loadedCourses.length > 0 ? [...loadedCourses] : DEFAULT_CNSLG_COURSES.map(n => ({ nombre: n }));
 
-      DEFAULT_CNSLG_COURSES.forEach(defName => {
-        if (!existingNames.has(defName.toLowerCase())) {
-          combined.push({ nombre: defName });
-        }
-      });
+      // Ensure 'Admisiones' is available as special selector option
+      if (!combined.some(c => cleanCourseName(c.nombre).toLowerCase() === 'admisiones')) {
+        combined.push({ nombre: 'Admisiones' });
+      }
 
       setCursosList(combined);
       setExamenesList(examenesRes.examenes || []);
