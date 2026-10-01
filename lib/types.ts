@@ -105,6 +105,17 @@ export interface ExClaveDia {
   }[];
 }
 
+// ─── Habilitación de intentos adicionales (Admin / Directivo) ─────────────────
+export interface ExHabilitacion {
+  _id?: string;
+  examenId: string;
+  estudianteId: string;
+  intentosPermitidos: number;
+  autorizadoPor?: string;
+  autorizadoPorId?: string;
+  autorizadoEn?: Date;
+}
+
 // ─── Session payload in JWT ───────────────────────────────────────────────────
 export interface SessionPayload {
   userId: string;

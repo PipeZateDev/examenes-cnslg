@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
 import { getSessionFromRequest, hasRole } from '@/lib/auth';
-import { ObjectId } from 'mongodb';
 
 // GET /api/examenes/[id]/resultados
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -12,10 +11,22 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   const db = await getDb();
+  
+  // Get all attempts for this exam, preserving history and sorting by student name and attempt number
   const intentos = await db.collection('ex_intentos')
     .find({ examenId: id })
-    .sort({ enviadoEn: -1 })
+    .sort({ estudianteNombre: 1, intentoNumero: 1, enviadoEn: -1 })
     .toArray();
 
-  return NextResponse.json({ intentos });
+  // Get all authorizations for this exam
+  const habilitaciones = await db.collection('ex_habilitaciones')
+    .find({ examenId: id })
+    .toArray();
+
+  return NextResponse.json({
+    intentos,
+    habilitaciones,
+    esDirectivo: hasRole(session.rol, 'directivo'),
+    esAdmin: session.rol === 'admin',
+  });
 }

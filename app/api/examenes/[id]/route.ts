@@ -144,17 +144,49 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ ok: true });
   }
 
-  if (action === 'segundo_intento' && hasRole(session.rol, 'admin')) {
-    const { estudianteId } = data;
-    await db.collection('ex_intentos').updateMany(
-      { examenId: id, estudianteId, estado: { $in: ['enviado', 'bloqueado'] } },
-      { $set: { estado: 'bloqueado' } }
+  if ((action === 'segundo_intento' || action === 'habilitar_intento') && hasRole(session.rol, 'directivo')) {
+    const { estudianteId, intentosPermitidos } = data;
+    if (!estudianteId) {
+      return NextResponse.json({ error: 'El número de documento del estudiante es requerido' }, { status: 400 });
+    }
+
+    const docStr = String(estudianteId).trim();
+    const nuevosIntentos = Math.max(2, Number(intentosPermitidos || 2));
+
+    await db.collection('ex_habilitaciones').updateOne(
+      { examenId: id, estudianteId: docStr },
+      {
+        $set: {
+          examenId: id,
+          estudianteId: docStr,
+          intentosPermitidos: nuevosIntentos,
+          autorizadoPor: session.nombre || session.username,
+          autorizadoPorId: session.userId,
+          autorizadoEn: new Date(),
+        },
+      },
+      { upsert: true }
     );
-    // Allow new attempt by removing blocked status — admin creates fresh chance
-    await db.collection('ex_intentos').deleteMany({
-      examenId: id, estudianteId, estado: 'bloqueado'
+
+    return NextResponse.json({
+      ok: true,
+      estudianteId: docStr,
+      intentosPermitidos: nuevosIntentos,
+      mensaje: `Segundo intento habilitado exitosamente para el estudiante ${docStr}. Los intentos anteriores se mantienen guardados.`,
     });
-    return NextResponse.json({ ok: true });
+  }
+
+  if (action === 'revocar_intento' && hasRole(session.rol, 'directivo')) {
+    const { estudianteId } = data;
+    if (!estudianteId) {
+      return NextResponse.json({ error: 'El número de documento del estudiante es requerido' }, { status: 400 });
+    }
+    const docStr = String(estudianteId).trim();
+    await db.collection('ex_habilitaciones').deleteOne({
+      examenId: id,
+      estudianteId: docStr,
+    });
+    return NextResponse.json({ ok: true, estudianteId: docStr });
   }
 
   return NextResponse.json({ error: 'Acción no válida' }, { status: 400 });

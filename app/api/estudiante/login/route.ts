@@ -115,16 +115,21 @@ export async function POST(req: Request) {
     const finalExamenId = examen._id.toString();
 
     // 3. Check if student already presented or exhausted allowed attempts
-    const intentos = await db.collection('ex_intentos').countDocuments({
+    const intentosCompletados = await db.collection('ex_intentos').countDocuments({
       examenId: finalExamenId,
       estudianteId: docStr,
       estado: { $in: ['enviado', 'bloqueado'] },
     });
 
-    const maxIntentos = examen.intentosPermitidos || 1;
-    if (intentos >= maxIntentos) {
+    const habilitacion = await db.collection('ex_habilitaciones').findOne({
+      examenId: finalExamenId,
+      estudianteId: docStr,
+    });
+
+    const maxIntentos = habilitacion?.intentosPermitidos || examen.intentosPermitidos || 1;
+    if (intentosCompletados >= maxIntentos) {
       return NextResponse.json({
-        error: 'Ya has presentado y enviado este examen. Si requieres presentar un nuevo intento, solicita autorización a tu docente o administrador.',
+        error: `Ya has completado tus ${maxIntentos > 1 ? maxIntentos + ' intentos' : 'intento'} para este examen. Si requieres autorización para un nuevo intento, contacta a la coordinación o administración.`,
       }, { status: 403 });
     }
 
