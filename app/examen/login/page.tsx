@@ -9,8 +9,18 @@ export default function ExamenLoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [examenes, setExamenes] = useState<Array<{ _id: string; titulo: string; materia?: string }>>([]);
+  const [isDesktop, setIsDesktop] = useState<boolean | null>(null);
+  const [bypassDesktop, setBypassDesktop] = useState(false);
 
   useEffect(() => {
+    // Detect if running inside Electron desktop app
+    const inElectron = typeof window !== 'undefined' && (
+      !!(window as unknown as { electronAPI?: { isElectron?: boolean } }).electronAPI?.isElectron ||
+      navigator.userAgent.includes('Electron') ||
+      navigator.userAgent.includes('CNSLG-Desktop-App')
+    );
+    setIsDesktop(inElectron);
+
     // Load active exams for the selector
     fetch('/api/estudiante/examenes-activos')
       .then(r => r.json())
@@ -38,6 +48,47 @@ export default function ExamenLoginPage() {
     }
   }
 
+  // If accessed from regular web browser in production and not bypassed
+  if (isDesktop === false && !bypassDesktop) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 flex flex-col items-center justify-center p-4">
+        <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 text-center border border-slate-100">
+          <div className="w-20 h-20 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center text-4xl mx-auto mb-5 shadow-inner">
+            🖥️
+          </div>
+          <h2 className="text-xl font-bold text-slate-800 mb-2">Aplicación de Escritorio Requerida</h2>
+          <p className="text-slate-600 text-sm mb-6 leading-relaxed">
+            Por seguridad institucional, los estudiantes <strong>únicamente pueden presentar exámenes desde la aplicación de escritorio oficial</strong> instalada en los computadores del colegio.
+          </p>
+
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-xs text-blue-900 mb-6 text-left space-y-2">
+            <p>🎓 <strong>Para Alumnos:</strong> Dirígete a la sala de sistemas y abre la aplicación <em>"Exámenes CNSLG"</em> en el computador asignado.</p>
+            <p>👩‍🏫 <strong>Para Docentes y Directivos:</strong> Toda la gestión remota, creación de pruebas y revisión de resultados se realiza desde la web.</p>
+          </div>
+
+          <div className="space-y-3">
+            <a
+              href="/login"
+              className="block w-full bg-blue-700 hover:bg-blue-800 text-white font-semibold py-3 rounded-xl transition-colors text-sm shadow-md shadow-blue-700/20"
+            >
+              Ingresar al Portal Web de Staff / Docentes →
+            </a>
+            <button
+              onClick={() => setBypassDesktop(true)}
+              className="text-xs text-slate-400 hover:text-slate-600 underline pt-2"
+            >
+              (Modo prueba / Desarrollo: Continuar en navegador)
+            </button>
+          </div>
+        </div>
+
+        <p className="text-slate-400 text-xs mt-6 text-center">
+          Colegio Nuevo San Luis Gonzaga — Plataforma de Evaluaciones
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-900 via-emerald-800 to-teal-900 flex flex-col items-center justify-center p-4">
       {/* School header */}
@@ -47,7 +98,7 @@ export default function ExamenLoginPage() {
             onError={(e) => { (e.target as HTMLImageElement).style.display='none'; }} />
         </div>
         <h1 className="text-white text-3xl font-bold">CNSLG — Exámenes</h1>
-        <p className="text-green-200 text-sm mt-1">Acceso para Estudiantes</p>
+        <p className="text-green-200 text-sm mt-1">Acceso para Estudiantes (App de Escritorio)</p>
       </div>
 
       {/* Login card */}

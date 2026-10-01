@@ -3,13 +3,13 @@ const path = require('path');
 const http = require('http');
 
 const NEXT_PORT = 3001;
-const NEXT_URL = `http://localhost:${NEXT_PORT}`;
-const CLOSE_CODE_ENDPOINT = `${NEXT_URL}/api/admin/verificar-codigo`;
+const DEFAULT_LOCAL_URL = `http://localhost:${NEXT_PORT}`;
+const NEXT_URL = process.env.EXAMENES_WEB_URL || process.env.NEXT_URL || DEFAULT_LOCAL_URL;
 
 let mainWindow = null;
 let isLocked = false; // True while exam is in progress (kiosk mode)
 
-// ─── Wait for Next.js to be ready ────────────────────────────────────────────
+// ─── Wait for Next.js to be ready (local mode only) ─────────────────────────
 function waitForNext(retries = 30) {
   return new Promise((resolve, reject) => {
     let attempts = 0;
@@ -28,29 +28,23 @@ function waitForNext(retries = 30) {
   });
 }
 
-// ─── Verify close code against server ────────────────────────────────────────
+// ─── Verify close code against server (works for local and Vercel/HTTPS) ─────
 async function verifyCloseCode(code) {
-  return new Promise((resolve) => {
-    const postData = JSON.stringify({ codigo: code });
-    const options = {
-      hostname: 'localhost',
-      port: NEXT_PORT,
-      path: '/api/admin/verificar-codigo',
+  try {
+    const res = await fetch(`${NEXT_URL}/api/admin/verificar-codigo`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) },
-    };
-    const req = http.request(options, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try { resolve(JSON.parse(data).valid === true); }
-        catch { resolve(false); }
-      });
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'CNSLG-Desktop-App/1.0'
+      },
+      body: JSON.stringify({ codigo: code }),
     });
-    req.on('error', () => resolve(false));
-    req.write(postData);
-    req.end();
-  });
+    const data = await res.json();
+    return data.valid === true;
+  } catch (err) {
+    console.error('Error verifying close code:', err);
+    return false;
+  }
 }
 
 // ─── Show close code prompt ───────────────────────────────────────────────────
@@ -101,6 +95,10 @@ async function createWindow() {
     icon: path.join(__dirname, 'public', 'logo-cnslg.png'),
   });
 
+  // Set custom user agent identifying the official desktop application
+  const defaultUA = mainWindow.webContents.getUserAgent();
+  mainWindow.webContents.setUserAgent(`${defaultUA} CNSLG-Desktop-App/1.0`);
+
   // Block navigation to external URLs
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (!url.startsWith(NEXT_URL) && !url.startsWith('http://localhost:')) {
@@ -119,13 +117,15 @@ async function createWindow() {
     }
   });
 
-  // Load Next.js
+  // Load Next.js (wait if local, or load remote directly)
   try {
-    await waitForNext();
+    if (NEXT_URL.includes('localhost') || NEXT_URL.includes('127.0.0.1')) {
+      await waitForNext();
+    }
     mainWindow.loadURL(`${NEXT_URL}/examen/login`);
     isLocked = true;
-  } catch {
-    dialog.showErrorBox('Error', 'No se pudo conectar al servidor de la aplicación.');
+  } catch (err) {
+    dialog.showErrorBox('Error', `No se pudo conectar al servidor de la aplicación (${NEXT_URL}).`);
     app.quit();
   }
 }

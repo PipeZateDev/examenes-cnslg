@@ -16,6 +16,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 });
     }
 
+    // Verify request comes from desktop app (Electron)
+    const userAgent = req.headers.get('user-agent') || '';
+    const isDesktop = userAgent.includes('Electron') || userAgent.includes('CNSLG-Desktop-App');
+    const allowWeb = process.env.ALLOW_WEB_STUDENT === '1' || process.env.NODE_ENV !== 'production';
+
+    if (!isDesktop && !allowWeb) {
+      return NextResponse.json({
+        error: 'Esta prueba solo puede ser presentada desde la aplicación de escritorio oficial instalada en los computadores del colegio.',
+      }, { status: 403 });
+    }
+
     // 1. Verify student exists in reportes
     const dbReportes = await getDbReportes();
     const student = await dbReportes.collection('students').findOne({
