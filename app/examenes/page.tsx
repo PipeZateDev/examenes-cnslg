@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { getSession } from '@/lib/auth';
+import { getSession, hasRole } from '@/lib/auth';
 import Link from 'next/link';
 import { getDb } from '@/lib/mongodb';
 
@@ -18,10 +18,12 @@ export default async function ExamenesPage({
   const filter: Record<string, unknown> = { esAdmision };
   if (params.estado) filter.estado = params.estado;
 
+  const esCoordinadorOPlus = hasRole(session.rol, 'coordinador');
+
   const examenes = await db.collection('ex_examenes')
     .find(filter)
     .sort({ creadoEn: -1 })
-    .project({ titulo: 1, materia: 1, estado: 1, creadoEn: 1, esAdmision: 1 })
+    .project({ titulo: 1, materia: 1, estado: 1, creadoEn: 1, esAdmision: 1, claveAcceso: 1, activadoPor: 1, activadoEn: 1 })
     .toArray();
 
   const ESTADO_COLORS: Record<string, string> = {
@@ -95,20 +97,46 @@ export default async function ExamenesPage({
               <Link
                 key={ex._id.toString()}
                 href={`/examenes/${ex._id.toString()}`}
-                className="bg-white rounded-xl shadow hover:shadow-md p-5 flex items-center justify-between transition group"
+                className="bg-white rounded-2xl shadow-sm hover:shadow-md border border-slate-200 p-5 flex items-center justify-between transition group flex-wrap gap-4"
               >
-                <div>
-                  <h3 className="font-bold text-slate-800 group-hover:text-blue-700 transition">{ex.titulo}</h3>
-                  {ex.materia && <p className="text-slate-500 text-sm">{ex.materia}</p>}
-                  <p className="text-slate-400 text-xs mt-1">
-                    {new Date(ex.creadoEn).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}
-                  </p>
+                <div className="flex-1 min-w-[280px]">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <h3 className="font-bold text-slate-800 group-hover:text-blue-700 transition text-base">{ex.titulo}</h3>
+                    {ex.materia && (
+                      <span className="text-xs text-slate-500 font-medium">({ex.materia})</span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-3 text-xs text-slate-400 flex-wrap">
+                    <span>
+                      📅 Creado: {new Date(ex.creadoEn).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </span>
+
+                    {/* Show who activated the code for Coordinador and above */}
+                    {esCoordinadorOPlus && ex.activadoPor && (
+                      <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-0.5 rounded-md font-semibold text-[11px]">
+                        <span>🔑</span>
+                        <span>Activado por: <strong>{ex.activadoPor}</strong></span>
+                        {ex.activadoEn && (
+                          <span className="text-emerald-600/80 font-normal">
+                            ({new Date(ex.activadoEn).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })})
+                          </span>
+                        )}
+                      </span>
+                    )}
+                  </div>
                 </div>
+
                 <div className="flex items-center gap-3">
+                  {ex.claveAcceso && ex.estado === 'activo' && (
+                    <span className="font-mono text-xs font-bold bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg border border-slate-200">
+                      Clave: {ex.claveAcceso}
+                    </span>
+                  )}
                   <span className={`px-3 py-1 rounded-full text-xs font-semibold ${ESTADO_COLORS[ex.estado] || 'bg-gray-100 text-gray-500'}`}>
                     {ESTADO_LABELS[ex.estado] || ex.estado}
                   </span>
-                  <span className="text-gray-400 text-lg">→</span>
+                  <span className="text-slate-400 text-lg group-hover:translate-x-1 transition-transform">→</span>
                 </div>
               </Link>
             ))}

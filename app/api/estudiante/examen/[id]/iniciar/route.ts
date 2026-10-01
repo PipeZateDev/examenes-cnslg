@@ -20,6 +20,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     {
       projection: {
         titulo: 1, materia: 1, duracionMinutos: 1, esAdmision: 1, intentosPermitidos: 1,
+        activadoPor: 1, activadoEn: 1,
         'preguntas.orden': 1,
         'preguntas.enunciado': 1,
         'preguntas.opciones': 1,
@@ -82,6 +83,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       iniciadoEn: iniciadoEnDate,
       respuestas: [],
       intentoNumero,
+      examenActivadoPor: (examen.activadoPor as string) || 'Docente / Staff',
       ...(intentoNumero > 1 ? {
         autorizadoPor: habilitacion?.autorizadoPor || 'Directivo / Administrador',
         autorizadoEn: habilitacion?.autorizadoEn || new Date(),

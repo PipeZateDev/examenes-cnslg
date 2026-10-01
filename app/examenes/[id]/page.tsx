@@ -1,5 +1,5 @@
 import { redirect, notFound } from 'next/navigation';
-import { getSession } from '@/lib/auth';
+import { getSession, hasRole } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
 import Link from 'next/link';
@@ -21,7 +21,12 @@ export default async function ExamenDetailPage({ params }: { params: Promise<{ i
   // Get today's access key if exam is active
   const { hoy } = await import('@/lib/utils');
   const claveDoc = await db.collection('ex_clave_dia').findOne({ fecha: hoy() });
-  const examenClave = (claveDoc?.examenesClaves as Array<{ examenId: string; clave: string }>)?.find(e => e.examenId === id);
+  const examenClave = (claveDoc?.examenesClaves as Array<{
+    examenId: string;
+    clave: string;
+    activadoPor?: string;
+    activadoEn?: Date;
+  }>)?.find(e => e.examenId === id);
   const activeKey = examenClave?.clave || (examen.estado === 'activo' ? (examen.claveAcceso as string) : null);
 
   // Count any student attempts
@@ -86,6 +91,11 @@ export default async function ExamenDetailPage({ params }: { params: Promise<{ i
               <div className="bg-emerald-50 border border-emerald-300 rounded-lg p-3 shadow-xs">
                 <p className="text-emerald-700 text-xs font-bold">🔑 Clave activa del examen</p>
                 <p className="font-bold text-emerald-800 text-2xl font-mono tracking-[0.25em]">{activeKey}</p>
+                {hasRole(session.rol, 'coordinador') && (examen.activadoPor || examenClave?.activadoPor) && (
+                  <p className="text-[11px] text-emerald-900 font-semibold mt-1 border-t border-emerald-200 pt-1">
+                    Activado por: <strong>{String(examen.activadoPor || examenClave?.activadoPor)}</strong>
+                  </p>
+                )}
               </div>
             )}
           </div>

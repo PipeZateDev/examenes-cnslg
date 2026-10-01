@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { getSession } from '@/lib/auth';
+import { getSession, hasRole } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
 import { hoy } from '@/lib/utils';
 import Link from 'next/link';
@@ -28,7 +28,12 @@ export default async function AdmisionesPage({
     db.collection('ex_clave_dia').findOne({ fecha: hoy() }),
   ]);
 
-  const examenesClaves = (claveDoc?.examenesClaves as Array<{ examenId: string; clave: string }>) || [];
+  const examenesClaves = (claveDoc?.examenesClaves as Array<{
+    examenId: string;
+    clave: string;
+    activadoPor?: string;
+    activadoEn?: Date;
+  }>) || [];
 
   // Count applicants for each admission exam
   const stats = await db.collection('ex_intentos').aggregate([
@@ -55,11 +60,16 @@ export default async function AdmisionesPage({
     }])
   );
 
+  const esCoordinadorOPlus = hasRole(session.rol, 'coordinador');
+
   const lista = examenes.map(ex => {
     const idStr = ex._id.toString();
     const claveEntry = examenesClaves.find(k => k.examenId === idStr);
     const key = claveEntry?.clave || (ex.estado === 'activo' ? (ex.claveAcceso as string) : null);
     const st = statsMap.get(idStr) || { totalIntentos: 0, enviados: 0, promedio: null };
+    const activadoPor = (ex.activadoPor as string) || claveEntry?.activadoPor || null;
+    const activadoEn = ex.activadoEn || claveEntry?.activadoEn || null;
+
     return {
       _id: idStr,
       titulo: ex.titulo as string,
@@ -69,6 +79,8 @@ export default async function AdmisionesPage({
       cursos: (ex.cursos as string[]) || [],
       totalPreguntas: Array.isArray(ex.preguntas) ? ex.preguntas.length : 0,
       claveActiva: key,
+      activadoPor,
+      activadoEn,
       totalIntentos: st.totalIntentos,
       enviados: st.enviados,
       promedio: st.promedio,
@@ -216,6 +228,18 @@ export default async function AdmisionesPage({
                       </h3>
                       {ex.materia && (
                         <p className="text-xs text-slate-500 mt-0.5">{ex.materia}</p>
+                      )}
+
+                      {esCoordinadorOPlus && ex.activadoPor && (
+                        <p className="mt-1.5 inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-md font-semibold text-[11px]">
+                          <span>🔑</span>
+                          <span>Activado por: <strong>{ex.activadoPor}</strong></span>
+                          {ex.activadoEn && (
+                            <span className="text-emerald-600/80 font-normal">
+                              ({new Date(ex.activadoEn).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })})
+                            </span>
+                          )}
+                        </p>
                       )}
                     </div>
 

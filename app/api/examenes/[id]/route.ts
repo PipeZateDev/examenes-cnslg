@@ -74,9 +74,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       clave = generateExamAccessKey();
     }
     
+    const activadorNombre = session.nombre || session.username;
+    const activadorId = session.userId;
+    const activadorRol = session.rol;
+    const now = new Date();
+
     await db.collection('ex_examenes').updateOne(
       { _id: new ObjectId(id) },
-      { $set: { estado: 'activo', claveAcceso: clave, fechaActivacion: today } }
+      {
+        $set: {
+          estado: 'activo',
+          claveAcceso: clave,
+          fechaActivacion: today,
+          activadoPor: activadorNombre,
+          activadoPorId: activadorId,
+          activadoPorRol: activadorRol,
+          activadoEn: now,
+        },
+      }
     );
 
     // Upsert daily key document cleanly (pull old entry for this exam if any, then push new)
@@ -87,7 +102,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     );
     await db.collection('ex_clave_dia').updateOne(
       { fecha: today },
-      { $push: { examenesClaves: { examenId: id, clave, titulo: currentEx.titulo || '' } } as never },
+      {
+        $push: {
+          examenesClaves: {
+            examenId: id,
+            clave,
+            titulo: currentEx.titulo || '',
+            activadoPor: activadorNombre,
+            activadoPorId: activadorId,
+            activadoEn: now,
+          },
+        } as never,
+      },
       { upsert: true }
     );
 

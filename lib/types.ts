@@ -61,6 +61,11 @@ export interface ExExamen {
   preguntas: Pregunta[];
   // Daily access key generated per-exam per-day by docente
   claveAcceso?: string;      // 6 chars, shown to docente
+  fechaActivacion?: string;  // YYYY-MM-DD
+  activadoPor?: string;      // Staff member who activated the exam code
+  activadoPorId?: string;
+  activadoPorRol?: Rol;
+  activadoEn?: Date;
 }
 
 export type EstadoIntento = 'en_progreso' | 'enviado' | 'bloqueado';
@@ -92,6 +97,9 @@ export interface ExIntento {
   calificacionFinal?: number;  // 0-100
   calificacionesPorArea?: CalificacionArea[]; // Solo para pruebas de admisión
   intentoNumero: number;
+  autorizadoPor?: string;
+  autorizadoEn?: Date;
+  examenActivadoPor?: string; // Captured staff member who activated the exam
 }
 
 // ─── Daily codes (close code + exam access keys) ─────────────────────────────
@@ -102,6 +110,10 @@ export interface ExClaveDia {
   examenesClaves: {    // per-exam daily access key shown to docentes
     examenId: string;
     clave: string;     // 6 alphanumeric
+    titulo?: string;
+    activadoPor?: string;
+    activadoPorId?: string;
+    activadoEn?: Date;
   }[];
 }
 
