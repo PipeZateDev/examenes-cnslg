@@ -27,13 +27,24 @@ export async function POST(req: Request) {
       }, { status: 403 });
     }
 
-    // 1. Verify student exists in reportes
-    const dbReportes = await getDbReportes();
-    const student = await dbReportes.collection('students').findOne({
-      numeroDocumento: String(numeroDocumento).trim(),
-    });
+    // 1. Verify student exists in reportes (or fallback to examenes db)
+    let student = null;
+    try {
+      const dbReportes = await getDbReportes();
+      student = await dbReportes.collection('students').findOne({
+        numeroDocumento: String(numeroDocumento).trim(),
+      });
+    } catch (_) {}
+
     if (!student) {
-      return NextResponse.json({ error: 'Documento no encontrado' }, { status: 401 });
+      const db = await getDb();
+      student = await db.collection('students').findOne({
+        numeroDocumento: String(numeroDocumento).trim(),
+      });
+    }
+
+    if (!student) {
+      return NextResponse.json({ error: 'Documento no encontrado en el sistema de estudiantes.' }, { status: 401 });
     }
 
     // 2. Verify exam exists and is active
