@@ -22,6 +22,7 @@ export default async function ExamenDetailPage({ params }: { params: Promise<{ i
   const { hoy } = await import('@/lib/utils');
   const claveDoc = await db.collection('ex_clave_dia').findOne({ fecha: hoy() });
   const examenClave = (claveDoc?.examenesClaves as Array<{ examenId: string; clave: string }>)?.find(e => e.examenId === id);
+  const activeKey = examenClave?.clave || (examen.estado === 'activo' ? (examen.claveAcceso as string) : null);
 
   // Count any student attempts
   const totalIntentos = await db.collection('ex_intentos').countDocuments({
@@ -81,10 +82,10 @@ export default async function ExamenDetailPage({ params }: { params: Promise<{ i
               <p className="text-slate-400 text-xs">Intentos presentados</p>
               <p className="font-bold text-slate-700 text-lg">{totalIntentos}</p>
             </div>
-            {examenClave && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-                <p className="text-emerald-600 text-xs">Clave de hoy</p>
-                <p className="font-bold text-emerald-700 text-xl font-mono tracking-widest">{examenClave.clave}</p>
+            {activeKey && (
+              <div className="bg-emerald-50 border border-emerald-300 rounded-lg p-3 shadow-xs">
+                <p className="text-emerald-700 text-xs font-bold">🔑 Clave activa del examen</p>
+                <p className="font-bold text-emerald-800 text-2xl font-mono tracking-[0.25em]">{activeKey}</p>
               </div>
             )}
           </div>

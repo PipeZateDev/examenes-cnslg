@@ -79,25 +79,35 @@ export default function ExamenActions({ examenId, estado, totalIntentos = 0, esA
         )}
 
         {/* Activate */}
-        {estado === 'aprobado' && esDirectivo && (
+        {estado === 'aprobado' && (esDirectivo || esDocente) && (
           <button
             onClick={() => action('activate')}
             disabled={!!loading}
-            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition disabled:opacity-50"
+            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold transition disabled:opacity-50 shadow-xs flex items-center gap-1.5"
           >
             {loading === 'activate' ? 'Activando...' : '▶ Activar Examen'}
           </button>
         )}
 
         {/* Close */}
-        {estado === 'activo' && esDirectivo && (
-          <button
-            onClick={() => { if (confirm('¿Cerrar el examen? Los estudiantes ya no podrán presentarlo.')) action('close'); }}
-            disabled={!!loading}
-            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition disabled:opacity-50"
-          >
-            {loading === 'close' ? 'Cerrando...' : '⏹ Cerrar Examen'}
-          </button>
+        {estado === 'activo' && (esDirectivo || esDocente) && (
+          <div className="flex gap-2">
+            <button
+              onClick={() => action('activate')}
+              disabled={!!loading}
+              className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-lg text-xs font-semibold transition disabled:opacity-50"
+              title="Generar un nuevo código de acceso para hoy"
+            >
+              {loading === 'activate' ? 'Regenerando...' : '🔄 Regenerar Código'}
+            </button>
+            <button
+              onClick={() => { if (confirm('¿Cerrar el examen? Los estudiantes ya no podrán presentarlo.')) action('close'); }}
+              disabled={!!loading}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold transition disabled:opacity-50 shadow-xs"
+            >
+              {loading === 'close' ? 'Cerrando...' : '⏹ Cerrar Examen'}
+            </button>
+          </div>
         )}
 
         {/* Results */}

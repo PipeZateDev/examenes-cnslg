@@ -1,20 +1,29 @@
 import { NextResponse } from 'next/server';
 import { getDb, getDbReportes } from '@/lib/mongodb';
 import { createSession, COOKIE_NAME } from '@/lib/auth';
-import { generateCloseCode, hoy } from '@/lib/utils';
+import { hoy } from '@/lib/utils';
+import { ObjectId } from 'mongodb';
 
 /**
- * Student login — uses:
- *   - username: numeroDocumento (from reportes-cnslg Students)
- *   - password: daily key provided by docente for the exam
+ * Student login:
+ *   - numeroDocumento: Student's ID / TI / CC / NUIP
+ *   - claveAcceso: 6-char access key provided by the docente
+ *
+ * Automatically locates the unique active exam associated with that access key
+ * and redirects the student directly to presentation.
  */
 export async function POST(req: Request) {
   try {
-    const { numeroDocumento, claveAcceso, examenId } = await req.json();
+    const { numeroDocumento, claveAcceso, examenId: inputExamenId } = await req.json();
 
-    if (!numeroDocumento || !claveAcceso || !examenId) {
-      return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 });
+    if (!numeroDocumento || !claveAcceso) {
+      return NextResponse.json({
+        error: 'Por favor ingresa tu número de documento y el código del examen proporcionado por tu docente.',
+      }, { status: 400 });
     }
+
+    const docStr = String(numeroDocumento).trim();
+    const claveStr = String(claveAcceso).trim().toUpperCase();
 
     // Verify request comes from desktop app (Electron)
     const userAgent = req.headers.get('user-agent') || '';
@@ -32,66 +41,108 @@ export async function POST(req: Request) {
     try {
       const dbReportes = await getDbReportes();
       student = await dbReportes.collection('students').findOne({
-        numeroDocumento: String(numeroDocumento).trim(),
+        numeroDocumento: docStr,
       });
     } catch (_) {}
 
     if (!student) {
       const db = await getDb();
       student = await db.collection('students').findOne({
-        numeroDocumento: String(numeroDocumento).trim(),
+        numeroDocumento: docStr,
       });
     }
 
     if (!student) {
-      return NextResponse.json({ error: 'Documento no encontrado en el sistema de estudiantes.' }, { status: 401 });
+      return NextResponse.json({
+        error: 'Número de documento no encontrado en el sistema de estudiantes. Verifica que esté bien escrito.',
+      }, { status: 401 });
     }
 
-    // 2. Verify exam exists and is active
     const db = await getDb();
-    const { ObjectId } = await import('mongodb');
-    const examen = await db.collection('ex_examenes').findOne({
-      _id: new ObjectId(examenId),
-      estado: 'activo',
-    });
+    const today = hoy();
+
+    // 2. Identify the active exam corresponding to the unique access code
+    let matchedExamenId: string | null = null;
+
+    // A. Check today's active keys in ex_clave_dia
+    const claveDoc = await db.collection('ex_clave_dia').findOne({ fecha: today });
+    if (claveDoc?.examenesClaves && Array.isArray(claveDoc.examenesClaves)) {
+      const found = claveDoc.examenesClaves.find(
+        (e: { examenId: string; clave: string }) => e.clave && e.clave.toUpperCase() === claveStr
+      );
+      if (found) {
+        matchedExamenId = found.examenId;
+      }
+    }
+
+    // B. Find exam by matched ID or by claveAcceso field in ex_examenes
+    let examen = null;
+    if (matchedExamenId) {
+      try {
+        examen = await db.collection('ex_examenes').findOne({
+          _id: new ObjectId(matchedExamenId),
+          estado: 'activo',
+        });
+      } catch (_) {}
+    }
+
     if (!examen) {
-      return NextResponse.json({ error: 'Examen no disponible' }, { status: 404 });
+      examen = await db.collection('ex_examenes').findOne({
+        estado: 'activo',
+        claveAcceso: claveStr,
+      });
     }
 
-    // 3. Verify daily access key
-    const claveDoc = await db.collection('ex_clave_dia').findOne({ fecha: hoy() });
-    const examenClave = claveDoc?.examenesClaves?.find(
-      (e: { examenId: string; clave: string }) => e.examenId === examenId
-    );
-    if (!examenClave || examenClave.clave.toUpperCase() !== claveAcceso.toUpperCase()) {
-      return NextResponse.json({ error: 'Clave de acceso incorrecta' }, { status: 401 });
+    // C. Legacy fallback if explicit examenId was supplied
+    if (!examen && inputExamenId) {
+      try {
+        const candidate = await db.collection('ex_examenes').findOne({
+          _id: new ObjectId(inputExamenId),
+          estado: 'activo',
+        });
+        if (candidate && candidate.claveAcceso?.toUpperCase() === claveStr) {
+          examen = candidate;
+        }
+      } catch (_) {}
     }
 
-    // 4. Check if student already used all attempts
+    if (!examen) {
+      return NextResponse.json({
+        error: 'Código de examen incorrecto o no se encuentra activo ningún examen con este código hoy. Por favor verifica con tu docente.',
+      }, { status: 404 });
+    }
+
+    const finalExamenId = examen._id.toString();
+
+    // 3. Check if student already presented or exhausted allowed attempts
     const intentos = await db.collection('ex_intentos').countDocuments({
-      examenId,
-      estudianteId: numeroDocumento,
+      examenId: finalExamenId,
+      estudianteId: docStr,
       estado: { $in: ['enviado', 'bloqueado'] },
     });
-    if (intentos >= examen.intentosPermitidos) {
+
+    const maxIntentos = examen.intentosPermitidos || 1;
+    if (intentos >= maxIntentos) {
       return NextResponse.json({
-        error: 'Ya has presentado este examen. Contacta al administrador para un nuevo intento.',
+        error: 'Ya has presentado y enviado este examen. Si requieres presentar un nuevo intento, solicita autorización a tu docente o administrador.',
       }, { status: 403 });
     }
 
-    // 5. Create session (student role)
+    // 4. Create session (student role)
     const token = await createSession({
       userId: student._id.toString(),
-      username: numeroDocumento,
+      username: docStr,
       rol: 'estudiante',
       nombre: student.nombreCompleto,
     });
 
     const res = NextResponse.json({
       ok: true,
-      examenId,
+      examenId: finalExamenId,
+      titulo: examen.titulo,
       nombre: student.nombreCompleto,
     });
+
     res.cookies.set(COOKIE_NAME, token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

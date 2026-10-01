@@ -45,30 +45,64 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ ok: true });
   }
 
-  if (action === 'activate' && hasRole(session.rol, 'directivo')) {
-    // Generate daily key for this exam
-    const clave = generateExamAccessKey();
+  if (action === 'activate' && hasRole(session.rol, 'docente')) {
     const today = hoy();
+    const currentEx = await db.collection('ex_examenes').findOne({ _id: new ObjectId(id) });
+    if (!currentEx) return NextResponse.json({ error: 'Examen no encontrado' }, { status: 404 });
+
+    // Generate unique 6-character access key for today
+    let clave = '';
+    let isUnique = false;
+    for (let attempts = 0; attempts < 15; attempts++) {
+      clave = generateExamAccessKey();
+      const duplicateInDia = await db.collection('ex_clave_dia').findOne({
+        fecha: today,
+        'examenesClaves.clave': clave,
+        'examenesClaves.examenId': { $ne: id },
+      });
+      const duplicateInExam = await db.collection('ex_examenes').findOne({
+        _id: { $ne: new ObjectId(id) },
+        estado: 'activo',
+        claveAcceso: clave,
+      });
+      if (!duplicateInDia && !duplicateInExam) {
+        isUnique = true;
+        break;
+      }
+    }
+    if (!isUnique) {
+      clave = generateExamAccessKey();
+    }
     
     await db.collection('ex_examenes').updateOne(
       { _id: new ObjectId(id) },
-      { $set: { estado: 'activo' } }
+      { $set: { estado: 'activo', claveAcceso: clave, fechaActivacion: today } }
     );
 
-    // Upsert daily key
+    // Upsert daily key document cleanly (pull old entry for this exam if any, then push new)
     await db.collection('ex_clave_dia').updateOne(
       { fecha: today },
-      { $push: { examenesClaves: { examenId: id, clave } } as never },
+      { $pull: { examenesClaves: { examenId: id } } as never },
+      { upsert: true }
+    );
+    await db.collection('ex_clave_dia').updateOne(
+      { fecha: today },
+      { $push: { examenesClaves: { examenId: id, clave, titulo: currentEx.titulo || '' } } as never },
       { upsert: true }
     );
 
     return NextResponse.json({ ok: true, clave });
   }
 
-  if (action === 'close' && hasRole(session.rol, 'directivo')) {
+  if (action === 'close' && hasRole(session.rol, 'docente')) {
+    const today = hoy();
     await db.collection('ex_examenes').updateOne(
       { _id: new ObjectId(id) },
       { $set: { estado: 'cerrado' } }
+    );
+    await db.collection('ex_clave_dia').updateOne(
+      { fecha: today },
+      { $pull: { examenesClaves: { examenId: id } } as never }
     );
     return NextResponse.json({ ok: true });
   }

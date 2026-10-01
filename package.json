@@ -25,13 +25,17 @@
       "output": "C:/Users/Soporte-CNSLG/AppData/Local/Temp/examenes-cnslg-dist"
     },
     "win": {
-      "target": "nsis",
+      "target": ["nsis", "portable"],
       "icon": "public/icon.ico"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "shortcutName": "Exámenes CNSLG"
+      "shortcutName": "Exámenes CNSLG",
+      "artifactName": "Examenes CNSLG Setup ${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Exámenes CNSLG Portable.${ext}"
     },
     "files": [
       "electron/**/*",
