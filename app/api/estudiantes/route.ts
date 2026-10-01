@@ -54,7 +54,19 @@ export async function GET(req: NextRequest) {
       filter.$or = unassignedFilter.$or;
     }
   } else if (curso) {
-    filter.curso = curso;
+    const escaped = curso.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const courseRegex = { $regex: `^${escaped}$`, $options: 'i' };
+    const courseFilter = {
+      $or: [
+        { curso: courseRegex },
+        { grado: courseRegex },
+      ]
+    };
+    if (filter.$and) {
+      (filter.$and as Array<Record<string, unknown>>).push(courseFilter);
+    } else {
+      filter.$or = courseFilter.$or;
+    }
   }
 
   let dbToQuery = dbExamenes;

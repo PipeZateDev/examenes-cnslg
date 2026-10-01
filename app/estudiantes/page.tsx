@@ -30,7 +30,12 @@ export default async function EstudiantesPage({
   }
 
   if (cursoFilter) {
-    filter.curso = cursoFilter;
+    const escaped = cursoFilter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const courseRegex = { $regex: `^${escaped}$`, $options: 'i' };
+    filter.$or = [
+      { curso: courseRegex },
+      { grado: courseRegex },
+    ];
   }
 
   if (tab === 'aspirantes') {
@@ -57,7 +62,7 @@ export default async function EstudiantesPage({
     dbToQuery.collection('students').countDocuments(filter),
     dbExamenes.collection('students').countDocuments({ esAdmision: true }),
     (dbReportes || dbExamenes).collection('students').countDocuments({ esAdmision: { $ne: true } }),
-    dbExamenes.collection('courses').find({}).sort({ nombre: 1 }).toArray(),
+    (dbReportes || dbExamenes).collection('courses').find({}).sort({ ordenDisplay: 1, nombre: 1 }).toArray(),
   ]);
 
   const estudiantes = estudiantesDocs.map(est => ({

@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start -p 3001",
     "setup": "node scripts/setup.js",
+    "sync:courses": "node scripts/sync-courses.js",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3001 && electron .\"",
     "electron:build": "electron-builder --win",
     "electron:start": "electron ."

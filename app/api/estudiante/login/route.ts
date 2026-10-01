@@ -63,6 +63,24 @@ export async function POST(req: Request) {
       }, { status: 403 });
     }
 
+    // Auto-resolve course from graderecords if not present directly on student doc
+    if (!student.curso && !student.esAdmision) {
+      try {
+        const dbReportes = await getDbReportes();
+        const latestGrade = await dbReportes.collection('graderecords').findOne(
+          { numeroDocumento: docStr },
+          { sort: { anioLectivo: -1, periodo: -1, updatedAt: -1 } }
+        );
+        if (latestGrade?.curso) {
+          student.curso = latestGrade.curso;
+          dbReportes.collection('students').updateOne(
+            { numeroDocumento: docStr },
+            { $set: { curso: latestGrade.curso } }
+          ).catch(() => {});
+        }
+      } catch (_) {}
+    }
+
     const today = hoy();
 
     // 2. Identify the active exam corresponding to the unique access code

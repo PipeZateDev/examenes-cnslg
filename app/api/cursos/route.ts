@@ -3,12 +3,12 @@ import { getDb, getDbReportes } from '@/lib/mongodb';
 import { getSessionFromRequest, hasRole } from '@/lib/auth';
 import { ObjectId } from 'mongodb';
 
-// Default standard courses list for CNSLG in case DB has only partial records
+// Standard courses list for CNSLG (canonical grades)
 const DEFAULT_CNSLG_COURSES = [
   'Kinder', 'Transición',
-  '101', '102', '201', '202', '301', '302', '401', '402', '501', '502',
-  '601', '602', '701', '702', '801', '802', '901', '902',
-  '1001', '1002', '1101', '1102'
+  '101', '201', '301', '401', '501',
+  '601', '701', '801', '901',
+  '1001', '1101', '1102'
 ];
 
 // Educational grade sorter: Preescolar -> Primaria (101..) -> Bachillerato (601..1102) -> Otros
