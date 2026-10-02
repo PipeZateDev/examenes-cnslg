@@ -14,8 +14,16 @@ if (fs.existsSync(srcDir)) {
     if (file.endsWith('.exe')) {
       const srcFile = path.join(srcDir, file);
       const destFile = path.join(destDir, file);
-      fs.copyFileSync(srcFile, destFile);
-      console.log(`✓ Copiado a instalador: ${file}`);
+      try {
+        fs.copyFileSync(srcFile, destFile);
+        console.log(`✓ Copiado a instalador: ${file}`);
+      } catch (err) {
+        if (err.code === 'EBUSY') {
+          console.warn(`⚠️ Archivo en uso (${file}). No se pudo sobrescribir directamente porque la aplicación está abierta.`);
+        } else {
+          console.error(`Error copiando ${file}:`, err.message);
+        }
+      }
     }
   }
 } else {
