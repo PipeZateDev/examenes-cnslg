@@ -5,7 +5,6 @@ import type { Rol } from '@/lib/types';
 import DashboardClient from './DashboardClient';
 
 const MENU_ITEMS = [
-  { href: '/examen/staff', label: 'Vista en Vivo Alumno', icon: '👁️', desc: 'Ver y probar exámenes exactamente como los ve el alumno', minRol: 'docente' as Rol, isLivePreview: true },
   { href: '/examenes', label: 'Exámenes', icon: '📝', desc: 'Gestionar y crear exámenes', minRol: 'docente' as Rol },
   { href: '/examenes/nuevo', label: 'Nuevo Examen', icon: '➕', desc: 'Crear examen desde PDF/WORD', minRol: 'docente' as Rol },
   { href: '/resultados', label: 'Resultados', icon: '📊', desc: 'Ver resultados en tiempo real', minRol: 'docente' as Rol },

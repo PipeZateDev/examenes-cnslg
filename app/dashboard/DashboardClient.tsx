@@ -1,10 +1,8 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 import type { Rol } from '@/lib/types';
 import DashboardHeader from './DashboardHeader';
-import LivePreviewModal from '@/components/LivePreviewModal';
 
 interface MenuItem {
   href: string;
@@ -12,7 +10,6 @@ interface MenuItem {
   icon: string;
   desc: string;
   minRol: Rol;
-  isLivePreview?: boolean;
 }
 
 interface DashboardClientProps {
@@ -25,15 +22,12 @@ interface DashboardClientProps {
 }
 
 export default function DashboardClient({ user, rolLabels, visibleItems }: DashboardClientProps) {
-  const [isLiveModalOpen, setIsLiveModalOpen] = useState(false);
-
   return (
     <div className="min-h-screen bg-slate-100">
       {/* Top navbar */}
       <DashboardHeader
         user={user}
         rolLabels={rolLabels}
-        onOpenLivePreview={() => setIsLiveModalOpen(true)}
       />
 
       {/* Main content */}
@@ -44,46 +38,21 @@ export default function DashboardClient({ user, rolLabels, visibleItems }: Dashb
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {visibleItems.map(item => {
-            if (item.isLivePreview) {
-              return (
-                <button
-                  key={item.label}
-                  onClick={() => setIsLiveModalOpen(true)}
-                  className="bg-white rounded-xl shadow hover:shadow-md border border-transparent hover:border-emerald-300 p-6 flex items-start gap-4 transition-all group text-left cursor-pointer"
-                >
-                  <span className="text-4xl group-hover:scale-110 transition-transform">{item.icon}</span>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-slate-800 text-base group-hover:text-emerald-700 transition-colors">
-                        {item.label}
-                      </h3>
-                      <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">
-                        Modal
-                      </span>
-                    </div>
-                    <p className="text-slate-500 text-sm mt-1">{item.desc}</p>
-                  </div>
-                </button>
-              );
-            }
-
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="bg-white rounded-xl shadow hover:shadow-md border border-transparent hover:border-blue-200 p-6 flex items-start gap-4 transition-all group"
-              >
-                <span className="text-4xl group-hover:scale-110 transition-transform">{item.icon}</span>
-                <div>
-                  <h3 className="font-bold text-slate-800 text-base group-hover:text-blue-700 transition-colors">
-                    {item.label}
-                  </h3>
-                  <p className="text-slate-500 text-sm mt-1">{item.desc}</p>
-                </div>
-              </Link>
-            );
-          })}
+          {visibleItems.map(item => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="bg-white rounded-xl shadow hover:shadow-md border border-transparent hover:border-blue-200 p-6 flex items-start gap-4 transition-all group"
+            >
+              <span className="text-4xl group-hover:scale-110 transition-transform">{item.icon}</span>
+              <div>
+                <h3 className="font-bold text-slate-800 text-base group-hover:text-blue-700 transition-colors">
+                  {item.label}
+                </h3>
+                <p className="text-slate-500 text-sm mt-1">{item.desc}</p>
+              </div>
+            </Link>
+          ))}
         </div>
 
         {/* Quick stats */}
@@ -97,13 +66,6 @@ export default function DashboardClient({ user, rolLabels, visibleItems }: Dashb
           </div>
         </div>
       </main>
-
-      {/* Live Preview Modal */}
-      <LivePreviewModal
-        isOpen={isLiveModalOpen}
-        onClose={() => setIsLiveModalOpen(false)}
-        userRol={user.rol}
-      />
     </div>
   );
 }

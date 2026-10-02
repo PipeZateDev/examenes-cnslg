@@ -324,14 +324,14 @@ export default function PresentarExamenPage() {
         <div className="bg-gradient-to-r from-amber-600 via-indigo-700 to-blue-800 text-white px-4 sm:px-6 py-2.5 flex items-center justify-between shadow-md z-40 text-xs sm:text-sm flex-wrap gap-2">
           <div className="flex items-center gap-2.5">
             <span className="bg-white/20 text-white font-extrabold px-2.5 py-0.5 rounded-md uppercase tracking-wider text-[11px] shadow-xs">
-              👁️ Vista en Vivo Alumno
+              👁️ Vista Previa
             </span>
             <span className="font-semibold text-white/90 truncate max-w-xs">
               {staffInfo ? `${rolLabels[staffInfo.rol] || staffInfo.rol}: ${staffInfo.nombre}` : 'Modo Personal Staff'}
             </span>
             <span className="hidden md:inline-block text-white/60">•</span>
             <span className="hidden md:inline-block text-white/80 text-xs">
-              Sin registro de respuestas en BDD
+              Simulación de estudiante (sin trazas en BDD)
             </span>
           </div>
 
@@ -339,18 +339,18 @@ export default function PresentarExamenPage() {
             <button
               onClick={() => router.push('/dashboard')}
               className="bg-emerald-700 hover:bg-emerald-600 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-              title="Cerrar la vista de este examen y regresar al panel principal"
+              title="Regresar al panel principal"
             >
               <span>🏠</span>
-              <span>Volver a la Pantalla Principal</span>
+              <span>Panel Principal</span>
             </button>
             <button
-              onClick={() => router.push('/examen/staff')}
+              onClick={() => router.push(`/examenes/${id}`)}
               className="bg-white/15 hover:bg-white/25 text-white font-semibold px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1.5 cursor-pointer"
-              title="Cerrar la vista de este examen y regresar al catálogo de pruebas"
+              title="Volver a la edición y configuración del examen"
             >
-              <span>📋</span>
-              <span>Ver Otras Pruebas</span>
+              <span>✏️</span>
+              <span>Volver al Editor</span>
             </button>
             <button
               onClick={handleLogout}

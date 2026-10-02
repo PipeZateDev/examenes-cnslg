@@ -211,7 +211,7 @@ export default function ExamenLoginPage() {
             }`}
           >
             <span>👩‍🏫</span>
-            <span>Staff / Vista en Vivo</span>
+            <span>Docentes / Administrativos</span>
           </button>
         </div>
 
