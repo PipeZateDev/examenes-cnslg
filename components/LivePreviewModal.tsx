@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 export interface LiveExamItem {
   _id: string;
@@ -242,16 +243,14 @@ export default function LivePreviewModal({ isOpen, onClose, userRol }: LivePrevi
                     </div>
 
                     <div className="mt-4 pt-3 border-t border-slate-700/60 flex items-center justify-end">
-                      <button
-                        onClick={() => {
-                          onClose();
-                          router.push(`/examen/${ex._id}/presentar`);
-                        }}
-                        className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-2 px-4 rounded-xl text-xs transition shadow-md shadow-emerald-950/40 flex items-center justify-center gap-2 cursor-pointer"
+                      <Link
+                        href={`/examen/${ex._id}/presentar`}
+                        onClick={onClose}
+                        className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition shadow-md shadow-emerald-950/40 flex items-center justify-center gap-2 cursor-pointer text-center"
                       >
                         <span>👁️ Probar Examen en Vivo</span>
                         <span>→</span>
-                      </button>
+                      </Link>
                     </div>
                   </div>
                 );

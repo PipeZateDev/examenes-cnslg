@@ -258,24 +258,33 @@ export default function PresentarExamenPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md text-center border border-slate-200">
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <div className="bg-slate-800 rounded-3xl shadow-2xl p-8 max-w-md text-center border border-slate-700 text-slate-100">
           <div className="text-5xl mb-4">⚠️</div>
-          <h2 className="text-xl font-bold text-red-700 mb-2">Atención</h2>
-          <p className="text-slate-600 mb-6 text-sm leading-relaxed">{error}</p>
-          <div className="flex flex-col gap-2">
+          <h2 className="text-xl font-bold text-red-400 mb-2">Información del Examen</h2>
+          <p className="text-slate-300 mb-6 text-sm leading-relaxed">{error}</p>
+          <div className="flex flex-col gap-2.5">
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-2.5 rounded-xl text-sm transition shadow-md cursor-pointer flex items-center justify-center gap-2"
+            >
+              <span>🏠</span>
+              <span>Volver a la Pantalla Principal</span>
+            </button>
             <button
               onClick={() => router.push('/examen/staff')}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2.5 rounded-xl text-sm transition"
+              className="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-6 py-2.5 rounded-xl text-sm transition cursor-pointer flex items-center justify-center gap-2"
             >
-              ← Volver al Catálogo de Pruebas
+              <span>📋</span>
+              <span>Ver Catálogo de Pruebas</span>
             </button>
-            <a
-              href="/examen/login"
-              className="text-xs text-slate-500 hover:text-slate-700 underline pt-1"
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium px-6 py-2 rounded-xl text-xs transition cursor-pointer flex items-center justify-center gap-1.5"
             >
-              Ir a la pantalla de ingreso
-            </a>
+              <span>🔄</span>
+              <span>Reintentar</span>
+            </button>
           </div>
         </div>
       </div>
@@ -575,52 +584,63 @@ export default function PresentarExamenPage() {
                 Opciones de respuesta:
               </p>
 
-              {/* Options list */}
+              {/* Options list with adaptive sizing */}
               <div className="space-y-2">
-                {pregunta.opciones.map(opcion => {
-                  const selected = respuestas[pregunta.orden] === opcion.letra;
-                  const isLong = (opcion.texto || '').length > 80;
-                  return (
-                    <button
-                      key={opcion.letra}
-                      type="button"
-                      onClick={() => setRespuestas(r => ({ ...r, [pregunta.orden]: opcion.letra }))}
-                      className={`w-full text-left flex items-start gap-3 ${
-                        isLong ? 'px-3.5 py-2' : 'px-4 py-2.5'
-                      } rounded-2xl border-2 transition-all cursor-pointer ${
-                        selected
-                          ? 'border-blue-600 bg-blue-50/80 text-blue-950 shadow-md ring-2 ring-blue-400/30 font-semibold'
-                          : 'border-slate-200 bg-white text-slate-800 hover:border-blue-300 hover:bg-slate-50/80'
-                      }`}
-                    >
-                      <span
-                        className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs transition ${
-                          selected ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600'
+                {(() => {
+                  const maxOptionLen = Math.max(...pregunta.opciones.map(o => (o.texto || '').length), 0);
+                  const isUltraLong = maxOptionLen > 120;
+                  const isLong = maxOptionLen > 60;
+
+                  return pregunta.opciones.map(opcion => {
+                    const selected = respuestas[pregunta.orden] === opcion.letra;
+                    return (
+                      <button
+                        key={opcion.letra}
+                        type="button"
+                        onClick={() => setRespuestas(r => ({ ...r, [pregunta.orden]: opcion.letra }))}
+                        className={`w-full text-left flex items-start ${
+                          isUltraLong ? 'gap-2.5 px-3 py-1.5' : isLong ? 'gap-3 px-3.5 py-2' : 'gap-3.5 px-4 py-2.5'
+                        } rounded-2xl border-2 transition-all cursor-pointer ${
+                          selected
+                            ? 'border-blue-600 bg-blue-50/80 text-blue-950 shadow-md ring-2 ring-blue-400/30 font-semibold'
+                            : 'border-slate-200 bg-white text-slate-800 hover:border-blue-300 hover:bg-slate-50/80'
                         }`}
                       >
-                        {opcion.letra}
-                      </span>
-                      <div className="flex-1 pt-0.5">
-                        {opcion.texto && (
-                          <div className={`leading-snug font-medium ${
-                            isLong ? 'text-xs md:text-sm' : 'text-sm'
-                          }`}>
-                            <FormattedText text={opcion.texto} />
-                          </div>
-                        )}
-                        {opcion.imagen && (
-                          <div className="mt-1 bg-white p-1 rounded-lg border border-slate-200 inline-block shadow-xs">
-                            <img
-                              src={opcion.imagen}
-                              alt={`Opción ${opcion.letra}`}
-                              className="max-h-24 max-w-full rounded object-contain"
-                            />
-                          </div>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
+                        <span
+                          className={`flex-shrink-0 ${
+                            isUltraLong ? 'w-6 h-6 text-[11px]' : 'w-7 h-7 text-xs'
+                          } rounded-full flex items-center justify-center font-bold transition ${
+                            selected ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600'
+                          }`}
+                        >
+                          {opcion.letra}
+                        </span>
+                        <div className="flex-1 pt-0.5">
+                          {opcion.texto && (
+                            <div className={`leading-snug font-medium ${
+                              isUltraLong
+                                ? 'text-[11px] md:text-xs leading-tight'
+                                : isLong
+                                ? 'text-xs md:text-[13px] leading-snug'
+                                : 'text-xs md:text-sm leading-snug'
+                            }`}>
+                              <FormattedText text={opcion.texto} />
+                            </div>
+                          )}
+                          {opcion.imagen && (
+                            <div className="mt-1 bg-white p-1 rounded-lg border border-slate-200 inline-block shadow-xs">
+                              <img
+                                src={opcion.imagen}
+                                alt={`Opción ${opcion.letra}`}
+                                className="max-h-20 max-w-full rounded object-contain"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  });
+                })()}
               </div>
             </div>
 

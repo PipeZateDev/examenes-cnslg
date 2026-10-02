@@ -918,51 +918,67 @@ export default function ExamenEditorView({
                     Opciones de respuesta:
                   </p>
 
-                  <div className="space-y-3">
-                    {preguntas[previewIdx].opciones.map(op => {
-                      const isSelected = previewRespuesta[preguntas[previewIdx].orden] === op.letra;
-                      return (
-                        <button
-                          key={op.letra}
-                          type="button"
-                          onClick={() =>
-                            setPreviewRespuesta(prev => ({
-                              ...prev,
-                              [preguntas[previewIdx].orden]: op.letra,
-                            }))
-                          }
-                          className={`w-full text-left flex items-start gap-4 px-5 py-3.5 rounded-2xl border-2 transition-all cursor-pointer ${
-                            isSelected
-                              ? 'border-blue-600 bg-blue-50/80 text-blue-950 shadow-md ring-2 ring-blue-400/30 font-semibold'
-                              : 'border-slate-200 bg-white text-slate-800 hover:border-blue-300 hover:bg-slate-50/80'
-                          }`}
-                        >
-                          <span
-                            className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition ${
-                              isSelected ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600'
+                  <div className="space-y-2">
+                    {(() => {
+                      const maxOptionLen = Math.max(...preguntas[previewIdx].opciones.map(o => (o.texto || '').length), 0);
+                      const isUltraLong = maxOptionLen > 120;
+                      const isLong = maxOptionLen > 60;
+
+                      return preguntas[previewIdx].opciones.map(op => {
+                        const isSelected = previewRespuesta[preguntas[previewIdx].orden] === op.letra;
+                        return (
+                          <button
+                            key={op.letra}
+                            type="button"
+                            onClick={() =>
+                              setPreviewRespuesta(prev => ({
+                                ...prev,
+                                [preguntas[previewIdx].orden]: op.letra,
+                              }))
+                            }
+                            className={`w-full text-left flex items-start ${
+                              isUltraLong ? 'gap-2.5 px-3 py-1.5' : isLong ? 'gap-3 px-3.5 py-2' : 'gap-3.5 px-4 py-2.5'
+                            } rounded-2xl border-2 transition-all cursor-pointer ${
+                              isSelected
+                                ? 'border-blue-600 bg-blue-50/80 text-blue-950 shadow-md ring-2 ring-blue-400/30 font-semibold'
+                                : 'border-slate-200 bg-white text-slate-800 hover:border-blue-300 hover:bg-slate-50/80'
                             }`}
                           >
-                            {op.letra}
-                          </span>
-                          <div className="flex-1 pt-0.5">
-                            {op.texto && (
-                              <div className="leading-relaxed font-medium text-sm md:text-base">
-                                <FormattedText text={op.texto} />
-                              </div>
-                            )}
-                            {op.imagen && (
-                              <div className="mt-2 bg-white p-1.5 rounded-lg border border-slate-200 inline-block shadow-xs">
-                                <img
-                                  src={op.imagen}
-                                  alt={`Opción ${op.letra}`}
-                                  className="max-h-32 max-w-full rounded object-contain"
-                                />
-                              </div>
-                            )}
-                          </div>
-                        </button>
-                      );
-                    })}
+                            <span
+                              className={`flex-shrink-0 ${
+                                isUltraLong ? 'w-6 h-6 text-[11px]' : 'w-7 h-7 text-xs'
+                              } rounded-full flex items-center justify-center font-bold transition ${
+                                isSelected ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600'
+                              }`}
+                            >
+                              {op.letra}
+                            </span>
+                            <div className="flex-1 pt-0.5">
+                              {op.texto && (
+                                <div className={`leading-snug font-medium ${
+                                  isUltraLong
+                                    ? 'text-[11px] md:text-xs leading-tight'
+                                    : isLong
+                                    ? 'text-xs md:text-[13px] leading-snug'
+                                    : 'text-xs md:text-sm leading-snug'
+                                }`}>
+                                  <FormattedText text={op.texto} />
+                                </div>
+                              )}
+                              {op.imagen && (
+                                <div className="mt-1 bg-white p-1 rounded-lg border border-slate-200 inline-block shadow-xs">
+                                  <img
+                                    src={op.imagen}
+                                    alt={`Opción ${op.letra}`}
+                                    className="max-h-20 max-w-full rounded object-contain"
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      });
+                    })()}
                   </div>
                 </div>
 

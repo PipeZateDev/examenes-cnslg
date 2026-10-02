@@ -28,37 +28,8 @@ export default async function StaffExamenesPage() {
 
   const db = await getDb();
 
-  // Role-based visibility query:
-  // - Admin, Directivo, Coordinador, Supervisor: Full visibility of all exams (regular & admissions, all states)
-  // - Docente: own exams + exams assigned to them or their courses + all approved/active/closed exams
+  // All staff roles have full visibility of all exams (regular & admissions, all states) in the live preview catalog
   const roleFilter: Record<string, unknown> = {};
-
-  if (['admin', 'directivo', 'coordinador', 'supervisor'].includes(session.rol)) {
-    // Full visibility for coordinator, supervisor, directivo, admin
-  } else {
-    // Docente role
-    const user = await db.collection('ex_usuarios').findOne({ username: session.username.toLowerCase() });
-    const userCursos = (user?.cursosAsignados as string[]) || [];
-    const userExamenes = (user?.examenesAsignados as string[]) || [];
-
-    const docenteConditions: Record<string, unknown>[] = [
-      { creadoPor: session.userId },
-      { estado: { $in: ['aprobado', 'activo', 'cerrado'] } },
-    ];
-
-    if (userExamenes.length > 0) {
-      const objectIds = userExamenes.filter(id => ObjectId.isValid(id)).map(id => new ObjectId(id));
-      if (objectIds.length > 0) {
-        docenteConditions.push({ _id: { $in: objectIds } });
-      }
-    }
-
-    if (userCursos.length > 0) {
-      docenteConditions.push({ cursos: { $in: userCursos } });
-    }
-
-    roleFilter.$or = docenteConditions;
-  }
 
   const examenes = await db.collection('ex_examenes')
     .find(roleFilter)

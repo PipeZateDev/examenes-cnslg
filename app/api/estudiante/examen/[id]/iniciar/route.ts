@@ -6,14 +6,21 @@ import { ObjectId } from 'mongodb';
 // POST /api/estudiante/examen/[id]/iniciar
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await getSessionFromRequest(req);
+  let session = await getSessionFromRequest(req);
   if (!session) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    try {
+      const { getSession } = await import('@/lib/auth');
+      session = await getSession();
+    } catch (_) {}
+  }
+
+  if (!session) {
+    return NextResponse.json({ error: 'No autorizado. Por favor inicia sesión.' }, { status: 401 });
   }
 
   const db = await getDb();
 
-  // ─── STAFF LIVE PREVIEW MODE (Zero DB trace) ───────────────────────────────
+  // ─── STAFF LIVE PREVIEW MODE (Zero DB trace, all states and exams allowed) ───
   if (session.rol !== 'estudiante') {
     let examen = null;
     try {
@@ -23,20 +30,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     if (!examen) {
-      return NextResponse.json({ error: 'Examen no encontrado' }, { status: 404 });
-    }
-
-    // Role-based visibility rules:
-    // - Admin, Directivo, Coordinador & Supervisor: can preview any exam live in the system
-    // - Docente: can preview own exams (any state) or approved/active/closed exams
-    const esStaffAutorizado = ['admin', 'directivo', 'coordinador', 'supervisor'].includes(session.rol);
-    const esCreador = String(examen.creadoPor) === String(session.userId);
-    const esAprobadoOActivo = ['aprobado', 'activo', 'cerrado'].includes(examen.estado as string);
-
-    if (!esStaffAutorizado && !esCreador && !esAprobadoOActivo) {
-      return NextResponse.json({
-        error: 'Este examen aún se encuentra en borrador o pendiente de aprobación. Solo el creador, coordinadores, directivos o administradores pueden visualizarlo.',
-      }, { status: 403 });
+      return NextResponse.json({ error: 'Examen no encontrado en la base de datos' }, { status: 404 });
     }
 
     const preguntas = (examen.preguntas || []).map((p: any) => ({

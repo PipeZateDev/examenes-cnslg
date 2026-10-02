@@ -21,8 +21,8 @@ export async function GET(req: NextRequest) {
   // Build role-based base filter
   const roleFilter: Record<string, unknown> = {};
 
-  if (['admin', 'directivo', 'coordinador', 'supervisor'].includes(session.rol)) {
-    // Admin, Directivo, Coordinador, Supervisor: full visibility of all institution exams
+  if (all || ['admin', 'directivo', 'coordinador', 'supervisor'].includes(session.rol)) {
+    // Admin, Directivo, Coordinador, Supervisor, or full catalog preview: full visibility of all institution exams
     if (estadoParam) roleFilter.estado = estadoParam;
   } else {
     // Docente: see own exams (any state), assigned exams/courses, and all approved/active/closed exams
@@ -92,7 +92,7 @@ export async function GET(req: NextRequest) {
       claveAcceso: 1,
       activadoPor: 1,
       activadoEn: 1,
-      preguntas: { $size: '$preguntas' },
+      preguntas: { $size: { $ifNull: ['$preguntas', []] } },
     })
     .toArray();
 
