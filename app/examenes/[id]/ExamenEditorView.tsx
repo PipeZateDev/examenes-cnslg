@@ -100,6 +100,7 @@ export default function ExamenEditorView({
   // Preview state
   const [previewIdx, setPreviewIdx] = useState(0);
   const [previewRespuesta, setPreviewRespuesta] = useState<Record<number, string>>({});
+  const [previewMaxVisited, setPreviewMaxVisited] = useState(0);
 
   const listadoCursosPredefinidos = esAdmision ? CURSOS_ADMISION : CURSOS_COLEGIO;
 
@@ -801,144 +802,242 @@ export default function ExamenEditorView({
 
       {/* ──────────────── TAB 2: VISTA PREVIA EN VIVO (SIMULADOR) ──────────────── */}
       {activeTab === 'preview' && (
-        <div className="bg-slate-900 rounded-3xl p-6 shadow-2xl text-white">
-          <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-6 flex-wrap gap-3">
-            <div className="flex items-center gap-3">
-              <span className="text-xs bg-emerald-500 text-slate-900 font-bold px-2.5 py-1 rounded-full uppercase">
-                Simulador de Pantalla de Estudiante
-              </span>
-              <span className="text-sm font-semibold text-slate-300">{titulo || 'Sin título'}</span>
-            </div>
-            <div className="flex items-center gap-4 text-xs text-slate-400">
-              {duracionMinutos && (
-                <span className="text-amber-300 font-mono font-bold">
-                  ⏱️ {duracionMinutos}:00
+        <div className="bg-slate-900 rounded-3xl p-6 shadow-2xl text-white space-y-6">
+          {/* Top Header: Title & Burning Fuse Bomb Timer */}
+          <div className="flex items-center justify-between pb-4 border-b border-slate-800 flex-wrap gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs bg-emerald-500 text-slate-950 font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                  Simulador de Pantalla de Estudiante (16:9)
                 </span>
-              )}
-              <span>Pregunta {previewIdx + 1} de {preguntas.length}</span>
+                <span className="text-xs text-slate-400">Colegio Nuevo San Luis Gonzaga</span>
+              </div>
+              <h2 className="text-lg font-bold text-white">{titulo || 'Sin título'}</h2>
+              {materia && <p className="text-xs text-blue-400 font-semibold">{materia}</p>}
+            </div>
+
+            {/* Burning Fuse & Bomb Countdown Box */}
+            <div className="flex items-center gap-3 min-w-[240px] max-w-sm flex-1 justify-end">
+              {/* Fuse rope ("Mecha") */}
+              <div className="flex-1 relative flex items-center min-w-[100px]">
+                <div className="w-full h-2.5 bg-amber-950/80 rounded-full border border-amber-700/50 relative overflow-hidden flex items-center">
+                  <div
+                    className="h-full bg-gradient-to-r from-slate-950 via-slate-900 to-amber-950 transition-all duration-500 relative"
+                    style={{
+                      width: `${Math.min(100, Math.max(0, ((previewIdx + 1) / Math.max(1, preguntas.length)) * 100))}%`,
+                    }}
+                  >
+                    <div className="absolute right-0 top-0 bottom-0 w-2 bg-gradient-to-r from-orange-500 to-amber-300 animate-pulse shadow-[0_0_10px_#f97316]" />
+                  </div>
+                </div>
+
+                {/* Animated flame / spark */}
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 pointer-events-none transition-all duration-500 flex items-center justify-center z-10"
+                  style={{
+                    left: `${Math.min(97, Math.max(3, ((previewIdx + 1) / Math.max(1, preguntas.length)) * 100))}%`,
+                  }}
+                >
+                  <span className="text-base inline-block animate-bounce drop-shadow-[0_0_6px_#f59e0b]">🔥</span>
+                </div>
+              </div>
+
+              {/* Bomb Timer Box */}
+              <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-2xl bg-slate-800 border border-slate-700 text-white font-mono font-bold text-sm shadow-md flex-shrink-0">
+                <span className="text-xl">💣</span>
+                <div className="flex flex-col text-left leading-none">
+                  <span className="text-[9px] uppercase font-sans tracking-wider opacity-80">Tiempo</span>
+                  <span className="text-base font-black tracking-wider">{duracionMinutos ? `${duracionMinutos}:00` : 'Sin límite'}</span>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Simulated Student Card */}
-          {preguntas[previewIdx] && (
-            <div className="max-w-2xl mx-auto bg-white rounded-3xl p-8 shadow-2xl text-slate-900 mb-6">
-              {/* Card Header */}
-              <div className="flex items-center justify-between mb-4">
-                <span className="bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-full">
-                  Pregunta {previewIdx + 1}
-                </span>
-                {preguntas[previewIdx].area && (
-                  <span className="bg-slate-100 text-slate-700 text-xs font-semibold px-2.5 py-0.5 rounded-full">
-                    {preguntas[previewIdx].area}
-                  </span>
-                )}
-                <span className="text-xs text-slate-400">
-                  Valor: {preguntas[previewIdx].peso}%
-                </span>
-              </div>
+          {/* ─── 16:9 Widescreen Two-Column Layout ─────────────────────────── */}
+          {preguntas[previewIdx] ? (
+            <div className="bg-white rounded-3xl shadow-2xl p-6 sm:p-8 text-slate-900 border border-slate-200 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[480px]">
+              
+              {/* Left Column: Enunciado & Diagram */}
+              <div className="lg:col-span-7 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-slate-100 lg:pr-6 pb-6 lg:pb-0">
+                <div>
+                  <div className="flex items-center justify-between mb-4 flex-wrap gap-2 pb-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <span className="bg-blue-100 text-blue-900 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
+                        Pregunta {previewIdx + 1} de {preguntas.length}
+                      </span>
+                      {preguntas[previewIdx].area && (
+                        <span className="bg-purple-100 text-purple-900 text-xs font-semibold px-2.5 py-1 rounded-full border border-purple-200">
+                          {preguntas[previewIdx].area}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs font-semibold text-slate-400">
+                      Valor: {preguntas[previewIdx].peso}%
+                    </span>
+                  </div>
 
-              {/* Diagram / Image */}
-              {preguntas[previewIdx].imagen && (
-                <div className="mb-6 flex justify-center bg-slate-50 border border-slate-200 rounded-2xl p-3">
-                  <img
-                    src={preguntas[previewIdx].imagen!}
-                    alt="Diagrama"
-                    className="max-h-64 object-contain rounded-lg"
-                  />
+                  {/* Enunciado */}
+                  <div className="text-slate-800 text-lg md:text-xl leading-relaxed mb-6 font-medium">
+                    <FormattedText text={preguntas[previewIdx].enunciado} />
+                  </div>
+
+                  {/* Diagram / Image if attached */}
+                  {preguntas[previewIdx].imagen && (
+                    <div className="mb-4 flex justify-center bg-slate-50 p-4 rounded-2xl border border-slate-200 shadow-inner">
+                      <img
+                        src={preguntas[previewIdx].imagen!}
+                        alt="Diagrama"
+                        className="max-h-72 max-w-full rounded-xl object-contain shadow-sm bg-white p-2"
+                      />
+                    </div>
+                  )}
                 </div>
-              )}
 
-              {/* Enunciado */}
-              <div className="text-lg font-medium text-slate-800 mb-6 leading-relaxed">
-                <FormattedText text={preguntas[previewIdx].enunciado} />
+                <div className="text-xs text-slate-400 pt-3 border-t border-slate-100 flex items-center justify-between">
+                  <span>💡 Vista de simulación en vivo del alumno.</span>
+                  {previewRespuesta[preguntas[previewIdx].orden] ? (
+                    <span className="text-emerald-600 font-bold">✓ Opción {previewRespuesta[preguntas[previewIdx].orden]} seleccionada</span>
+                  ) : (
+                    <span className="text-amber-600 font-medium">⚠️ Aún no has seleccionado opción</span>
+                  )}
+                </div>
               </div>
 
-              {/* Options */}
-              <div className="space-y-3">
-                {preguntas[previewIdx].opciones.map(op => {
-                  const isSelected = previewRespuesta[preguntas[previewIdx].orden] === op.letra;
-                  return (
-                    <button
-                      key={op.letra}
-                      onClick={() =>
-                        setPreviewRespuesta(prev => ({
-                          ...prev,
-                          [preguntas[previewIdx].orden]: op.letra,
-                        }))
-                      }
-                      className={`w-full text-left flex items-start gap-4 px-5 py-3.5 rounded-2xl border-2 transition ${
-                        isSelected
-                          ? 'border-blue-600 bg-blue-50 text-blue-900 shadow-sm'
-                          : 'border-slate-200 bg-white hover:border-slate-300 text-slate-700'
-                      }`}
-                    >
-                      <span
-                        className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 mt-0.5 ${
-                          isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
+              {/* Right Column: Options & Navigation */}
+              <div className="lg:col-span-5 flex flex-col justify-between pl-0 lg:pl-2">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
+                    Opciones de respuesta:
+                  </p>
+
+                  <div className="space-y-3">
+                    {preguntas[previewIdx].opciones.map(op => {
+                      const isSelected = previewRespuesta[preguntas[previewIdx].orden] === op.letra;
+                      return (
+                        <button
+                          key={op.letra}
+                          type="button"
+                          onClick={() =>
+                            setPreviewRespuesta(prev => ({
+                              ...prev,
+                              [preguntas[previewIdx].orden]: op.letra,
+                            }))
+                          }
+                          className={`w-full text-left flex items-start gap-4 px-5 py-3.5 rounded-2xl border-2 transition-all cursor-pointer ${
+                            isSelected
+                              ? 'border-blue-600 bg-blue-50/80 text-blue-950 shadow-md ring-2 ring-blue-400/30 font-semibold'
+                              : 'border-slate-200 bg-white text-slate-800 hover:border-blue-300 hover:bg-slate-50/80'
+                          }`}
+                        >
+                          <span
+                            className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition ${
+                              isSelected ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600'
+                            }`}
+                          >
+                            {op.letra}
+                          </span>
+                          <div className="flex-1 pt-0.5">
+                            {op.texto && (
+                              <div className="leading-relaxed font-medium text-sm md:text-base">
+                                <FormattedText text={op.texto} />
+                              </div>
+                            )}
+                            {op.imagen && (
+                              <div className="mt-2 bg-white p-1.5 rounded-lg border border-slate-200 inline-block shadow-xs">
+                                <img
+                                  src={op.imagen}
+                                  alt={`Opción ${op.letra}`}
+                                  className="max-h-32 max-w-full rounded object-contain"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Navigation Buttons */}
+                <div className="pt-6 mt-6 border-t border-slate-100 flex items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewIdx(i => Math.max(0, i - 1))}
+                    disabled={previewIdx === 0}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed font-semibold text-sm transition shadow-xs cursor-pointer"
+                  >
+                    ← Anterior
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPreviewIdx(i => {
+                        const next = Math.min(preguntas.length - 1, i + 1);
+                        setPreviewMaxVisited(prev => Math.max(prev, next));
+                        return next;
+                      });
+                    }}
+                    disabled={previewIdx === preguntas.length - 1}
+                    className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 font-bold text-sm transition shadow-md shadow-blue-600/20 cursor-pointer"
+                  >
+                    Siguiente →
+                  </button>
+                </div>
+              </div>
+
+              {/* ─── FULL-WIDTH COMPACT QUESTION NUMBERS STRIP (30% smaller, Green/Red/Blue) ─── */}
+              <div className="lg:col-span-12 pt-4 border-t border-slate-100 flex flex-col md:flex-row items-center justify-between gap-3">
+                <div className="flex items-center gap-3 text-[11px] font-semibold text-slate-500 flex-shrink-0">
+                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-emerald-600 inline-block" /> Contestada</span>
+                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block animate-pulse" /> Omitida</span>
+                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block" /> Actual</span>
+                </div>
+
+                {/* Compact 30% Smaller Numbers Flex Grid */}
+                <div className="flex items-center gap-1.5 flex-wrap justify-center flex-1 max-w-4xl">
+                  {preguntas.map((p, idx) => {
+                    const isCurrent = previewIdx === idx;
+                    const isAnswered = Boolean(previewRespuesta[p.orden]);
+                    const isSkipped = !isAnswered && (idx < previewIdx || previewMaxVisited > idx);
+
+                    return (
+                      <button
+                        key={p.orden}
+                        type="button"
+                        onClick={() => {
+                          setPreviewIdx(idx);
+                          setPreviewMaxVisited(prev => Math.max(prev, idx));
+                        }}
+                        title={
+                          isCurrent
+                            ? `Pregunta ${idx + 1} (Actual)`
+                            : isAnswered
+                            ? `Pregunta ${idx + 1}: Contestada (${previewRespuesta[p.orden]})`
+                            : isSkipped
+                            ? `Pregunta ${idx + 1}: Omitida / Sin responder`
+                            : `Pregunta ${idx + 1}: Pendiente`
+                        }
+                        className={`w-6 h-6 rounded-md text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center ${
+                          isCurrent
+                            ? 'bg-blue-600 text-white ring-2 ring-blue-400 scale-110 shadow-sm z-10'
+                            : isAnswered
+                            ? 'bg-emerald-600 text-white hover:bg-emerald-500 shadow-2xs'
+                            : isSkipped
+                            ? 'bg-red-500 text-white hover:bg-red-600 ring-1 ring-red-300 animate-pulse shadow-2xs'
+                            : 'bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 hover:text-slate-800'
                         }`}
                       >
-                        {op.letra}
-                      </span>
-                      <div className="flex-1">
-                        {op.texto && (
-                          <div className="text-sm font-medium leading-relaxed">
-                            <FormattedText text={op.texto} />
-                          </div>
-                        )}
-                        {op.imagen && (
-                          <div className="mt-2 bg-white p-1 rounded-lg border border-slate-200 inline-block shadow-xs">
-                            <img
-                              src={op.imagen}
-                              alt={`Opción ${op.letra}`}
-                              className="max-h-36 max-w-full rounded object-contain"
-                            />
-                          </div>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
+                        {idx + 1}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
+          ) : (
+            <p className="text-slate-400 text-sm text-center py-12">No hay preguntas agregadas a este examen todavía.</p>
           )}
-
-          {/* Navigation Controls */}
-          <div className="max-w-2xl mx-auto flex items-center justify-between gap-4">
-            <button
-              onClick={() => setPreviewIdx(i => Math.max(0, i - 1))}
-              disabled={previewIdx === 0}
-              className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-white text-sm font-semibold transition"
-            >
-              ← Anterior
-            </button>
-
-            {/* Quick jump dots */}
-            <div className="flex items-center gap-1.5 flex-wrap justify-center max-w-sm">
-              {preguntas.map((p, idx) => (
-                <button
-                  key={p.orden}
-                  onClick={() => setPreviewIdx(idx)}
-                  className={`w-7 h-7 rounded-lg text-xs font-bold transition ${
-                    previewIdx === idx
-                      ? 'bg-blue-600 text-white ring-2 ring-blue-400'
-                      : previewRespuesta[p.orden]
-                      ? 'bg-emerald-500 text-white'
-                      : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                  }`}
-                >
-                  {idx + 1}
-                </button>
-              ))}
-            </div>
-
-            <button
-              onClick={() => setPreviewIdx(i => Math.min(preguntas.length - 1, i + 1))}
-              disabled={previewIdx === preguntas.length - 1}
-              className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-white text-sm font-semibold transition"
-            >
-              Siguiente →
-            </button>
-          </div>
         </div>
       )}
     </div>

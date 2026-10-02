@@ -12,7 +12,7 @@
     "setup": "node scripts/setup.js",
     "sync:courses": "node scripts/sync-courses.js",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3001 && electron .\"",
-    "electron:build": "electron-builder --win",
+    "electron:build": "electron-builder --win && node scripts/copy-installer.js",
     "electron:start": "electron ."
   },
   "build": {

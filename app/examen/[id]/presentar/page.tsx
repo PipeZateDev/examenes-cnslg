@@ -38,7 +38,9 @@ export default function PresentarExamenPage() {
   const [confirmEnvio, setConfirmEnvio] = useState(false);
   const [error, setError] = useState('');
   const [tiempoRestante, setTiempoRestante] = useState<number | null>(null);
+  const [duracionTotal, setDuracionTotal] = useState<number>(3600);
   const [tiempoAgotado, setTiempoAgotado] = useState(false);
+  const [maxVisited, setMaxVisited] = useState(0);
 
   // Staff preview state
   const [isStaffPreview, setIsStaffPreview] = useState(false);
@@ -197,10 +199,13 @@ export default function PresentarExamenPage() {
           });
         }
 
+        const examDurSecs = data.examen.duracionMinutos ? data.examen.duracionMinutos * 60 : 3600;
+        setDuracionTotal(examDurSecs);
+
         if (data.tiempoRestanteSegundos !== undefined && data.tiempoRestanteSegundos !== null) {
           setTiempoRestante(data.tiempoRestanteSegundos);
         } else if (data.examen.duracionMinutos) {
-          setTiempoRestante(data.examen.duracionMinutos * 60);
+          setTiempoRestante(examDurSecs);
         }
 
         setLoading(false);
@@ -350,48 +355,137 @@ export default function PresentarExamenPage() {
         </div>
       )}
 
-      {/* Top Header Bar */}
-      <header className="bg-white border-b border-slate-200 shadow-sm px-6 py-3.5 flex items-center justify-between sticky top-0 z-30">
-        <div className="flex-1 mr-4">
-          <h1 className="font-bold text-slate-800 text-base md:text-lg truncate">{examen.titulo}</h1>
-          {examen.materia && <p className="text-xs text-slate-500">{examen.materia}</p>}
-        </div>
+      {/* ─── Top Header Bar with Burning Fuse & Bomb Timer ──────────────────────── */}
+      <header className="bg-slate-900 border-b border-slate-800 text-white px-6 py-3 sticky top-0 z-30 shadow-lg">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex-1 min-w-[200px]">
+            <h1 className="font-bold text-white text-base md:text-lg truncate">{examen.titulo}</h1>
+            {examen.materia && <p className="text-xs text-blue-400 font-semibold">{examen.materia}</p>}
+          </div>
 
-        {/* Live Countdown Timer */}
-        <div className="flex items-center gap-4 flex-shrink-0">
+          {/* Burning Fuse & Bomb Countdown Timer */}
           {tiempoRestante !== null && (
-            <div
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl font-mono font-bold text-base transition-all shadow-xs ${
-                tiempoRestante <= 60
-                  ? 'bg-red-600 text-white animate-pulse ring-4 ring-red-200'
-                  : tiempoRestante <= 300
-                  ? 'bg-amber-100 text-amber-900 border border-amber-300 animate-pulse'
-                  : 'bg-slate-100 text-slate-800 border border-slate-200'
-              }`}
-            >
-              <span>{tiempoRestante <= 60 ? '🚨' : tiempoRestante <= 300 ? '⚠️' : '⏱️'}</span>
-              <div className="flex flex-col text-left">
-                <span className="text-[10px] uppercase font-sans font-semibold leading-none opacity-80">
-                  {tiempoRestante <= 60 ? '¡Último minuto!' : 'Tiempo restante'}
-                </span>
-                <span className="text-lg leading-tight">{formatTiempo(tiempoRestante)}</span>
+            <div className="flex items-center gap-3 flex-1 max-w-md justify-end">
+              {/* Burning Fuse Track ("Mecha") */}
+              <div className="flex-1 relative flex items-center min-w-[120px]">
+                {/* Fuse rope */}
+                <div className="w-full h-2.5 bg-amber-950/80 rounded-full border border-amber-700/50 relative overflow-hidden flex items-center">
+                  {/* Burnt ash line */}
+                  <div
+                    className="h-full bg-gradient-to-r from-slate-950 via-slate-900 to-amber-950 transition-all duration-1000 ease-linear relative"
+                    style={{
+                      width: `${Math.min(100, Math.max(0, ((duracionTotal - tiempoRestante) / duracionTotal) * 100))}%`,
+                    }}
+                  >
+                    {/* Glowing ember edge */}
+                    <div className="absolute right-0 top-0 bottom-0 w-2 bg-gradient-to-r from-orange-500 to-amber-300 animate-pulse shadow-[0_0_10px_#f97316]" />
+                  </div>
+                </div>
+
+                {/* Animated flame / spark */}
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 pointer-events-none transition-all duration-1000 ease-linear flex items-center justify-center z-10"
+                  style={{
+                    left: `${Math.min(97, Math.max(3, ((duracionTotal - tiempoRestante) / duracionTotal) * 100))}%`,
+                  }}
+                >
+                  <span className="text-base inline-block animate-bounce drop-shadow-[0_0_6px_#f59e0b]">🔥</span>
+                </div>
+              </div>
+
+              {/* Bomb Timer Box */}
+              <div
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-2xl font-mono font-bold text-sm transition-all shadow-md flex-shrink-0 ${
+                  tiempoRestante <= 60
+                    ? 'bg-red-600 text-white animate-bounce ring-4 ring-red-400 shadow-red-500/50'
+                    : tiempoRestante <= 300
+                    ? 'bg-amber-500 text-slate-950 animate-pulse ring-2 ring-amber-300'
+                    : 'bg-slate-800 border border-slate-700 text-white'
+                }`}
+              >
+                <span className={`text-xl ${tiempoRestante <= 60 ? 'animate-spin' : ''}`}>💣</span>
+                <div className="flex flex-col text-left leading-none">
+                  <span className="text-[9px] uppercase font-sans tracking-wider opacity-80">
+                    {tiempoRestante <= 60 ? '¡Detonación!' : 'Tiempo restante'}
+                  </span>
+                  <span className="text-base font-black tracking-wider">{formatTiempo(tiempoRestante)}</span>
+                </div>
               </div>
             </div>
           )}
-
-          <div className="hidden sm:block text-xs text-slate-500 text-right">
-            <div className="font-semibold text-slate-700">{respondidas} de {total} respondidas</div>
-            <div className="text-slate-400">Pregunta {current + 1} de {total}</div>
-          </div>
         </div>
       </header>
 
-      {/* Progress bar */}
-      <div className="h-2 bg-slate-200 w-full overflow-hidden">
-        <div
-          className="h-full bg-blue-600 transition-all duration-300 ease-out"
-          style={{ width: `${((current + 1) / total) * 100}%` }}
-        />
+      {/* ─── Interactive Question Progress & Skipped Warning Bar ─────────── */}
+      <div className="bg-slate-900/95 border-b border-slate-800 px-6 py-2 shadow-inner">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3 text-xs text-slate-400">
+            <span className="font-bold text-slate-200">Pregunta {current + 1} de {total}</span>
+            <span>•</span>
+            <span className="text-emerald-400 font-semibold">{respondidas} respondidas</span>
+            {preguntas.filter((p, idx) => !respuestas[p.orden] && (idx < current || maxVisited > idx)).length > 0 && (
+              <span className="text-amber-300 font-bold bg-amber-500/20 px-2 py-0.5 rounded-md border border-amber-500/40 flex items-center gap-1 animate-pulse">
+                <span>⚠️</span>
+                <span>
+                  {preguntas.filter((p, idx) => !respuestas[p.orden] && (idx < current || maxVisited > idx)).length} sin responder
+                </span>
+              </span>
+            )}
+          </div>
+
+          {/* Interactive segmented progress tracker */}
+          <div className="flex-1 max-w-2xl flex items-center gap-1 relative py-1">
+            {preguntas.map((p, i) => {
+              const isCurrent = i === current;
+              const isAnswered = Boolean(respuestas[p.orden]);
+              const isSkipped = !isAnswered && (i < current || maxVisited > i);
+
+              return (
+                <div key={p.orden} className="flex-1 relative group">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCurrent(i);
+                      setMaxVisited(prev => Math.max(prev, i));
+                    }}
+                    className={`w-full h-3 rounded-full transition-all cursor-pointer flex items-center justify-center relative ${
+                      isCurrent
+                        ? 'bg-blue-500 ring-2 ring-blue-300 ring-offset-1 ring-offset-slate-900 scale-y-125 z-10'
+                        : isAnswered
+                        ? 'bg-emerald-500 hover:bg-emerald-400'
+                        : isSkipped
+                        ? 'bg-amber-500 hover:bg-amber-400 ring-1 ring-amber-300 animate-pulse'
+                        : 'bg-slate-700/80 hover:bg-slate-600'
+                    }`}
+                  >
+                    {isSkipped && !isCurrent && (
+                      <span className="absolute -top-3 text-[10px] leading-none pointer-events-none">
+                        ⚠️
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Hover Tooltip */}
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-col items-center pointer-events-none z-50 whitespace-nowrap">
+                    <div className="bg-slate-950 text-white text-[11px] font-semibold px-2.5 py-1 rounded-lg shadow-xl border border-slate-700 flex items-center gap-1.5">
+                      {isCurrent && <span>📍 Pregunta {i + 1} (Actual)</span>}
+                      {!isCurrent && isAnswered && (
+                        <span className="text-emerald-300">✓ Pregunta {i + 1}: Respondida ({respuestas[p.orden]})</span>
+                      )}
+                      {!isCurrent && isSkipped && (
+                        <span className="text-amber-300 font-bold">⚠️ Pregunta {i + 1}: Sin responder (Haz clic para ir)</span>
+                      )}
+                      {!isCurrent && !isAnswered && !isSkipped && (
+                        <span className="text-slate-400">Pregunta {i + 1}: Pendiente</span>
+                      )}
+                    </div>
+                    <div className="w-2 h-2 bg-slate-950 border-r border-b border-slate-700 rotate-45 -mt-1" />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {/* Warning banner under 5 minutes */}
@@ -400,135 +494,212 @@ export default function PresentarExamenPage() {
           <span>⚠️</span>
           <span>
             {tiempoRestante <= 60
-              ? '¡ATENCIÓN! Queda menos de 1 minuto. Al finalizar el tiempo, las respuestas se enviarán solas.'
+              ? '¡ATENCIÓN! Queda menos de 1 minuto. Al finalizar el tiempo, las respuestas se enviarán automáticamente.'
               : 'Quedan menos de 5 minutos para terminar. Asegúrate de responder todas las preguntas.'}
           </span>
         </div>
       )}
 
-      {/* Main Question View */}
-      <main className="flex-1 flex flex-col items-center justify-center p-4 md:p-6">
-        <div className="w-full max-w-3xl bg-white rounded-3xl shadow-xl p-6 md:p-8 border border-slate-100">
-          {/* Question badge and area */}
-          <div className="flex items-center justify-between mb-4 flex-wrap gap-2 pb-3 border-b border-slate-100">
-            <div className="flex items-center gap-2">
-              <span className="bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
-                Pregunta {current + 1} de {total}
-              </span>
-              {pregunta.area && (
-                <span className="bg-purple-100 text-purple-800 text-xs font-semibold px-2.5 py-1 rounded-full border border-purple-200">
-                  {pregunta.area}
+      {/* ─── 16:9 Widescreen Main Question View (2 Columns) ────────────────── */}
+      <main className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 w-full max-w-7xl mx-auto">
+        <div className="w-full bg-white rounded-3xl shadow-2xl p-6 sm:p-8 border border-slate-200 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[500px]">
+          
+          {/* ─── LEFT COLUMN: Question Enunciado & Diagram ─────────────────── */}
+          <div className="lg:col-span-7 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-slate-100 lg:pr-6 pb-6 lg:pb-0">
+            <div>
+              {/* Header tags */}
+              <div className="flex items-center justify-between mb-4 flex-wrap gap-2 pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <span className="bg-blue-100 text-blue-900 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
+                    Pregunta {current + 1} de {total}
+                  </span>
+                  {pregunta.area && (
+                    <span className="bg-purple-100 text-purple-900 text-xs font-semibold px-2.5 py-1 rounded-full border border-purple-200">
+                      {pregunta.area}
+                    </span>
+                  )}
+                </div>
+                <span className="text-xs font-semibold text-slate-400">
+                  Valor: {pregunta.peso}%
+                </span>
+              </div>
+
+              {/* Enunciado text */}
+              <div className="text-slate-800 text-lg md:text-xl leading-relaxed mb-6 font-medium">
+                <FormattedText text={pregunta.enunciado} />
+              </div>
+
+              {/* Diagram / Image if present */}
+              {pregunta.imagen && (
+                <div className="mb-4 flex justify-center bg-slate-50 p-4 rounded-2xl border border-slate-200 shadow-inner">
+                  <img
+                    src={pregunta.imagen}
+                    alt={`Diagrama de la pregunta ${pregunta.orden}`}
+                    className="max-h-72 max-w-full rounded-xl object-contain shadow-sm bg-white p-2"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Bottom status note */}
+            <div className="text-xs text-slate-400 pt-3 border-t border-slate-100 flex items-center justify-between">
+              <span>💡 Lee atentamente y selecciona tu respuesta a la derecha.</span>
+              {respuestas[pregunta.orden] ? (
+                <span className="text-emerald-600 font-bold">✓ Opción {respuestas[pregunta.orden]} seleccionada</span>
+              ) : (
+                <span className="text-amber-600 font-medium">⚠️ Aún no has seleccionado opción</span>
+              )}
+            </div>
+          </div>
+
+          {/* ─── RIGHT COLUMN: Options & Navigation ────────────────────────── */}
+          <div className="lg:col-span-5 flex flex-col justify-between pl-0 lg:pl-2">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
+                Opciones de respuesta:
+              </p>
+
+              {/* Options list */}
+              <div className="space-y-3">
+                {pregunta.opciones.map(opcion => {
+                  const selected = respuestas[pregunta.orden] === opcion.letra;
+                  return (
+                    <button
+                      key={opcion.letra}
+                      type="button"
+                      onClick={() => setRespuestas(r => ({ ...r, [pregunta.orden]: opcion.letra }))}
+                      className={`w-full text-left flex items-start gap-4 px-5 py-3.5 rounded-2xl border-2 transition-all cursor-pointer ${
+                        selected
+                          ? 'border-blue-600 bg-blue-50/80 text-blue-950 shadow-md ring-2 ring-blue-400/30 font-semibold'
+                          : 'border-slate-200 bg-white text-slate-800 hover:border-blue-300 hover:bg-slate-50/80'
+                      }`}
+                    >
+                      <span
+                        className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition ${
+                          selected ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        {opcion.letra}
+                      </span>
+                      <div className="flex-1 pt-0.5">
+                        {opcion.texto && (
+                          <div className="leading-relaxed font-medium text-sm md:text-base">
+                            <FormattedText text={opcion.texto} />
+                          </div>
+                        )}
+                        {opcion.imagen && (
+                          <div className="mt-2 bg-white p-1.5 rounded-lg border border-slate-200 inline-block shadow-xs">
+                            <img
+                              src={opcion.imagen}
+                              alt={`Opción ${opcion.letra}`}
+                              className="max-h-32 max-w-full rounded object-contain"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Status summary */}
+            <div className="pt-4 border-t border-slate-100 text-xs text-slate-500 flex items-center justify-between">
+              <span>Preguntas respondidas: <strong className="text-emerald-700">{respondidas} de {total}</strong></span>
+              {preguntas.filter((p, idx) => !respuestas[p.orden] && (idx < current || maxVisited > idx)).length > 0 && (
+                <span className="text-red-600 font-bold flex items-center gap-1">
+                  <span>⚠️</span>
+                  <span>{preguntas.filter((p, idx) => !respuestas[p.orden] && (idx < current || maxVisited > idx)).length} omitidas (en rojo)</span>
                 </span>
               )}
             </div>
-            <span className="text-xs font-semibold text-slate-400">
-              Valor: {pregunta.peso}%
-            </span>
-          </div>
 
-          {/* Enunciado con soporte de formatos (negrita, subrayado, tamaños y saltos de línea) */}
-          <div className="text-slate-800 text-lg md:text-xl leading-relaxed mb-6 font-medium">
-            <FormattedText text={pregunta.enunciado} />
-          </div>
+            {/* Navigation Buttons (Anterior & Siguiente) */}
+            <div className="pt-4 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setCurrent(c => Math.max(0, c - 1))}
+                disabled={current === 0}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed font-semibold text-sm transition shadow-xs cursor-pointer"
+              >
+                ← Anterior
+              </button>
 
-          {/* Question Image / Diagram if present */}
-          {pregunta.imagen && (
-            <div className="mb-6 flex justify-center bg-slate-50 p-4 rounded-2xl border border-slate-200">
-              <img
-                src={pregunta.imagen}
-                alt={`Diagrama de la pregunta ${pregunta.orden}`}
-                className="max-h-80 max-w-full rounded-xl object-contain shadow-sm bg-white p-2"
-              />
-            </div>
-          )}
-
-          {/* Options List */}
-          <div className="space-y-3">
-            {pregunta.opciones.map(opcion => {
-              const selected = respuestas[pregunta.orden] === opcion.letra;
-              return (
+              {current < total - 1 ? (
                 <button
-                  key={opcion.letra}
-                  onClick={() => setRespuestas(r => ({ ...r, [pregunta.orden]: opcion.letra }))}
-                  className={`w-full text-left flex items-start gap-4 px-5 py-4 rounded-2xl border-2 transition-all ${
-                    selected
-                      ? 'border-blue-600 bg-blue-50 text-blue-900 shadow-sm'
-                      : 'border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50'
-                  }`}
+                  type="button"
+                  onClick={() => {
+                    setCurrent(c => {
+                      const next = Math.min(total - 1, c + 1);
+                      setMaxVisited(prev => Math.max(prev, next));
+                      return next;
+                    });
+                  }}
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 text-white hover:bg-blue-700 font-bold text-sm transition shadow-md shadow-blue-600/20 cursor-pointer"
                 >
-                  <span
-                    className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition ${
-                      selected ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600'
+                  Siguiente →
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmEnvio(true)}
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 font-bold text-sm transition shadow-md shadow-emerald-600/25 cursor-pointer"
+                >
+                  {isStaffPreview ? 'Simular Envío de Respuestas ✓' : 'Finalizar y Enviar ✓'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* ─── FULL-WIDTH COMPACT QUESTION NUMBERS STRIP (30% smaller, Green/Red/Blue) ─── */}
+          <div className="lg:col-span-12 pt-4 border-t border-slate-100 flex flex-col md:flex-row items-center justify-between gap-3">
+            {/* Color Legend */}
+            <div className="flex items-center gap-3 text-[11px] font-semibold text-slate-500 flex-shrink-0">
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-emerald-600 inline-block" /> Contestada</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block animate-pulse" /> Omitida</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block" /> Actual</span>
+            </div>
+
+            {/* Compact 30% Smaller Numbers Flex Grid */}
+            <div className="flex items-center gap-1.5 flex-wrap justify-center flex-1 max-w-4xl">
+              {preguntas.map((p, i) => {
+                const isCurrent = i === current;
+                const isAnswered = Boolean(respuestas[p.orden]);
+                const isSkipped = !isAnswered && (i < current || maxVisited > i);
+
+                return (
+                  <button
+                    key={p.orden}
+                    type="button"
+                    onClick={() => {
+                      setCurrent(i);
+                      setMaxVisited(prev => Math.max(prev, i));
+                    }}
+                    title={
+                      isCurrent
+                        ? `Pregunta ${i + 1} (Actual)`
+                        : isAnswered
+                        ? `Pregunta ${i + 1}: Contestada (${respuestas[p.orden]})`
+                        : isSkipped
+                        ? `Pregunta ${i + 1}: Omitida / Sin responder`
+                        : `Pregunta ${i + 1}: Pendiente`
+                    }
+                    className={`w-6 h-6 rounded-md text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center ${
+                      isCurrent
+                        ? 'bg-blue-600 text-white ring-2 ring-blue-400 scale-110 shadow-sm z-10'
+                        : isAnswered
+                        ? 'bg-emerald-600 text-white hover:bg-emerald-500 shadow-2xs'
+                        : isSkipped
+                        ? 'bg-red-500 text-white hover:bg-red-600 ring-1 ring-red-300 animate-pulse shadow-2xs'
+                        : 'bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 hover:text-slate-800'
                     }`}
                   >
-                    {opcion.letra}
-                  </span>
-                  <div className="flex-1">
-                    {opcion.texto && (
-                      <div className="leading-relaxed pt-0.5 font-medium text-sm md:text-base">
-                        <FormattedText text={opcion.texto} />
-                      </div>
-                    )}
-                    {opcion.imagen && (
-                      <div className="mt-2 bg-white p-1.5 rounded-lg border border-slate-200 inline-block shadow-xs">
-                        <img
-                          src={opcion.imagen}
-                          alt={`Opción ${opcion.letra}`}
-                          className="max-h-36 max-w-full rounded object-contain"
-                        />
-                      </div>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
+                    {i + 1}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
-
-        {/* Navigation & Controls */}
-        <div className="w-full max-w-3xl mt-6 flex items-center justify-between gap-3 flex-wrap">
-          <button
-            onClick={() => setCurrent(c => Math.max(0, c - 1))}
-            disabled={current === 0}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium text-sm transition shadow-xs"
-          >
-            ← Anterior
-          </button>
-
-          {/* Quick jump question numbers */}
-          <div className="flex gap-1.5 flex-wrap justify-center max-w-md">
-            {preguntas.map((p, i) => (
-              <button
-                key={p.orden}
-                onClick={() => setCurrent(i)}
-                className={`w-8 h-8 rounded-xl text-xs font-bold transition shadow-2xs ${
-                  i === current
-                    ? 'bg-blue-600 text-white ring-2 ring-blue-300'
-                    : respuestas[p.orden]
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                {i + 1}
-              </button>
-            ))}
-          </div>
-
-          {current < total - 1 ? (
-            <button
-              onClick={() => setCurrent(c => Math.min(total - 1, c + 1))}
-              className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 text-white hover:bg-blue-700 font-semibold text-sm transition shadow-sm"
-            >
-              Siguiente →
-            </button>
-          ) : (
-            <button
-              onClick={() => setConfirmEnvio(true)}
-              className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 font-bold text-sm transition shadow-md shadow-emerald-600/20"
-            >
-              {isStaffPreview ? 'Simular Envío de Respuestas ✓' : 'Finalizar y Enviar ✓'}
-            </button>
-          )}
         </div>
       </main>
 
