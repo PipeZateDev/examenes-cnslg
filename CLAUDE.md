@@ -57,11 +57,21 @@ Este archivo es el punto de entrada para retomar el proyecto en cualquier sesió
 - El administrador puede eliminar cursos desde la cuadrícula o la vista de detalle.
 - Al eliminar un curso, los estudiantes asociados pasan de forma segura al listado **"Estudiantes Sin Curso"** para ser reasignados.
 
-### 7. Borrado de Respuestas y Restablecimiento de Intentos (Admin)
-- En `/resultados/[id]`, el Administrador puede:
-  - **Por Alumno Específico**: Borrar todas sus respuestas o un intento puntual para permitirle repetir desde el intento 1.
-  - **Por Curso Completo**: Borrar masivamente las respuestas de todos los estudiantes de un curso.
-  - **Por Todo el Examen**: Restablecer el examen completo a 0 intentos para todo el colegio.
+### 8. Vista en Vivo de Exámenes para Staff y Docentes (Desktop & Web)
+- **Ingreso desde Aplicación de Escritorio (`/examen/login`)**:
+  - Pestaña de acceso para **Staff** (Docentes, Coordinadores, Directivos y Administradores).
+  - Al ingresar, abre el catálogo institucional de pruebas en vivo (`/examen/staff`).
+- **Nivel de Visibilidad según Rol**:
+  - **Admin y Directivo**: Visualizan todas las pruebas del colegio en **cualquier estado** (desde *Borrador* y *Pendiente de Aprobación* hasta *Aprobado*, *Activo* y *Cerrado*).
+  - **Coordinador y Supervisor**: Visualizan todas las pruebas del colegio que se encuentren aprobadas, activas o cerradas (además de sus propios borradores).
+  - **Docente**: Visualiza las pruebas creadas por él (en cualquier estado) y las pruebas aprobadas/activas/cerradas correspondientes a sus cursos o asignaturas asignadas.
+- **Acceso Directo Sin Clave**:
+  - Los usuarios con rol de Staff **nunca son requeridos con el código de acceso diario** para ingresar a las pruebas en vivo.
+- **Modo Seguro Zero-Trace (Sin Traza en BDD)**:
+  - La presentación en `/examen/[id]/presentar` simula la interfaz exacta del estudiante, pero **no crea registros en `ex_intentos` ni en `ex_habilitaciones`**, protegiendo la integridad de la base de datos de producción.
+  - Al presionar *Finalizar y Enviar*, se calcula y muestra la calificación y desglose por área en memoria.
+- **Navegación y Cierre de Aplicación**:
+  - Los roles de Staff cuentan con botones para salir de la prueba y explorar otras (`/examen/staff`), y para **cerrar la aplicación de escritorio (`window.electronAPI.closeApp()`)** inmediatamente sin requerir código de administrador.
 
 ---
 
@@ -98,10 +108,15 @@ npx tsc --noEmit
 
 ---
 
-## 📌 Historial de Sesión (2026-10-01)
+## 📌 Historial de Sesión (2026-10-02)
 
 1. Sincronización masiva de cursos para los 245 alumnos de la institución en MongoDB.
 2. Implementación de borrado seguro de cursos y restablecimiento de estudiantes huérfanos.
 3. Implementación de borrado de respuestas y sobreescritura de intentos (individual, por curso y global).
 4. Restablecimiento del curso `TRANSICION` con sus 12 estudiantes matriculados.
-5. Verificación `npx tsc --noEmit` completada con 0 errores y despliegue a producción en GitHub / Vercel.
+5. Implementación completa de la **Vista en Vivo Alumno para Staff y Docentes**:
+   - Pestaña de acceso Staff en `/examen/login`.
+   - Catálogo interactivo de pruebas en `/examen/staff`.
+   - Modo simulación en `/examen/[id]/presentar` con cero trazas en BDD y cierre seguro de la aplicación Electron.
+   - Enlaces directos "👁️ Ver en Vivo" en el Dashboard, listados de exámenes y vista de detalle.
+6. Verificación de compilación Next.js y TypeScript completadas con 0 errores y desplegadas a GitHub `origin main`.
