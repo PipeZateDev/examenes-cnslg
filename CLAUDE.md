@@ -108,15 +108,7 @@ npx tsc --noEmit
 
 ---
 
-## 📌 Historial de Sesión (2026-10-02)
-
-1. Sincronización masiva de cursos para los 245 alumnos de la institución en MongoDB.
-2. Implementación de borrado seguro de cursos y restablecimiento de estudiantes huérfanos.
-3. Implementación de borrado de respuestas y sobreescritura de intentos (individual, por curso y global).
-4. Restablecimiento del curso `TRANSICION` con sus 12 estudiantes matriculados.
-5. Implementación completa de la **Vista en Vivo Alumno para Staff y Docentes**:
-   - Pestaña de acceso Staff en `/examen/login`.
-   - Catálogo interactivo de pruebas en `/examen/staff`.
-   - Modo simulación en `/examen/[id]/presentar` con cero trazas en BDD y cierre seguro de la aplicación Electron.
-   - Enlaces directos "👁️ Ver en Vivo" en el Dashboard, listados de exámenes y vista de detalle.
-6. Verificación de compilación Next.js y TypeScript completadas con 0 errores y desplegadas a GitHub `origin main`.
+7. **Reapertura de Exámenes Cerrados Restringida a Admin y Trazabilidad del Activador**:
+   - Una vez que un examen ha sido activado y luego cerrado por un docente/directivo (`estado: 'cerrado'`), **únicamente el Administrador (`admin`) puede reabrirlo / reactivarlo**.
+   - Al reactivarlo, se genera un **nuevo código diario de 6 caracteres** y se sincroniza en `ex_clave_dia`.
+   - Se mantiene siempre el registro del **último usuario que activó o reactivó la prueba** (`activadoPor`, `activadoPorId`, `activadoPorRol`, `activadoEn`), visible en la vista de detalle y listados.
