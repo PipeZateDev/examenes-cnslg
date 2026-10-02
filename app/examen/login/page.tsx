@@ -21,7 +21,8 @@ export default function ExamenLoginPage() {
   useEffect(() => {
     // Detect if running inside Electron desktop app
     const inElectron = typeof window !== 'undefined' && (
-      !!(window as unknown as { electronAPI?: { isElectron?: boolean } }).electronAPI?.isElectron ||
+      Boolean((window as any).electronAPI?.closeApp) ||
+      Boolean((window as any).electronAPI?.isElectron) ||
       navigator.userAgent.includes('Electron') ||
       navigator.userAgent.includes('CNSLG-Desktop-App')
     );
@@ -148,12 +149,24 @@ export default function ExamenLoginPage() {
 
   return (
     <div
-      className={`min-h-screen flex flex-col items-center justify-center p-4 transition-colors duration-500 ${
+      className={`min-h-screen flex flex-col items-center justify-center p-4 relative transition-colors duration-500 ${
         tab === 'estudiante'
           ? 'bg-gradient-to-br from-green-950 via-emerald-900 to-teal-950'
           : 'bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950'
       }`}
     >
+      {/* Top right quick exit for desktop app */}
+      {isDesktop && (
+        <button
+          onClick={handleExitApp}
+          className="absolute top-4 right-4 bg-red-600/80 hover:bg-red-600 text-white font-bold px-3.5 py-2 rounded-xl text-xs transition flex items-center gap-1.5 shadow-lg border border-red-500/50 backdrop-blur-xs"
+          title="Cerrar la aplicación de escritorio"
+        >
+          <span>🚪</span>
+          <span>Cerrar Aplicativo</span>
+        </button>
+      )}
+
       {/* School header */}
       <div className="text-center mb-6">
         <div className="w-24 h-24 mx-auto mb-3 rounded-full bg-white shadow-xl flex items-center justify-center p-2 border-2 border-emerald-400/80">
@@ -368,14 +381,15 @@ export default function ExamenLoginPage() {
         {/* Exit App Button for Electron Desktop */}
         {isDesktop && (
           <div className="pt-4 mt-5 border-t border-slate-100 flex items-center justify-between text-xs">
-            <span className="text-slate-400">Aplicación Oficial CNSLG</span>
+            <span className="text-slate-400 font-medium">Aplicación Oficial CNSLG</span>
             <button
               type="button"
               onClick={handleExitApp}
-              className="text-red-600 hover:text-red-800 font-semibold flex items-center gap-1 hover:underline"
+              className="bg-red-50 hover:bg-red-100 text-red-700 hover:text-red-800 border border-red-200 font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition"
+              title="Cerrar la aplicación de escritorio"
             >
               <span>🚪</span>
-              <span>Cerrar Aplicativo</span>
+              <span>Cerrar Aplicación</span>
             </button>
           </div>
         )}

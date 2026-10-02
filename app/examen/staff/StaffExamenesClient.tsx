@@ -153,14 +153,15 @@ export default function StaffExamenesClient({ examenes, user }: Props) {
               <span>Salir de la App</span>
             </button>
 
-            {/* Logout button */}
+            {/* Logout button / Return to login screen */}
             <button
               onClick={handleLogout}
               disabled={loggingOut}
-              className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium px-3 py-2 rounded-xl text-xs border border-slate-700 transition"
-              title="Cerrar sesión"
+              className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium px-3.5 py-2 rounded-xl text-xs border border-slate-700 transition flex items-center gap-1.5"
+              title="Cerrar sesión institucional y volver a la pantalla de login"
             >
-              {loggingOut ? 'Saliendo...' : '🔒 Cerrar Sesión'}
+              <span>🔒</span>
+              <span>{loggingOut ? 'Saliendo...' : 'Volver al Login'}</span>
             </button>
           </div>
         </div>

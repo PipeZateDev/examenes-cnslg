@@ -175,9 +175,12 @@ ipcMain.handle('exam-finished', async () => {
   return { ok: true };
 });
 
-// IPC: close app immediately from renderer when exam is submitted / finished
+// IPC: close app immediately from renderer when staff exits or exam finishes
 ipcMain.handle('close-app', async () => {
   isLocked = false;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.destroy();
+  }
   app.quit();
   return { ok: true };
 });

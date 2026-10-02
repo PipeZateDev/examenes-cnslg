@@ -75,6 +75,14 @@ export default function PresentarExamenPage() {
     }
   };
 
+  // Handle Logout & return to login screen
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (_) {}
+    router.push('/examen/login');
+  };
+
   // Handler for submitting responses
   const handleEnviar = useCallback(async (autoEnvio = false) => {
     if (!examenRef.current || !intentoIdRef.current || enviandoRef.current) return;
@@ -323,9 +331,17 @@ export default function PresentarExamenPage() {
               <span>Ver Otras Pruebas</span>
             </button>
             <button
+              onClick={handleLogout}
+              className="bg-white/10 hover:bg-white/20 text-white font-medium px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1"
+              title="Cerrar sesión y volver a la pantalla de login"
+            >
+              <span>🔒</span>
+              <span>Volver al Login</span>
+            </button>
+            <button
               onClick={handleExitApp}
               className="bg-red-600 hover:bg-red-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1 shadow-xs"
-              title="Salir y cerrar el aplicativo de escritorio"
+              title="Salir y cerrar inmediatamente el aplicativo de escritorio"
             >
               <span>🚪</span>
               <span>Salir de la App</span>
@@ -601,29 +617,35 @@ export default function PresentarExamenPage() {
               </span>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <button
                 onClick={() => {
                   setPreviewResult(null);
                   setRespuestas({});
                   setCurrent(0);
                 }}
-                className="flex-1 py-3 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm font-semibold transition"
+                className="py-2.5 px-3 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold transition"
               >
                 🔄 Repetir Prueba
               </button>
               <button
                 onClick={() => router.push('/examen/staff')}
-                className="flex-1 py-3 rounded-xl bg-blue-600 text-white hover:bg-blue-700 text-sm font-bold transition shadow-sm"
+                className="py-2.5 px-3 rounded-xl bg-blue-600 text-white hover:bg-blue-700 text-xs font-bold transition shadow-sm"
               >
-                ← Volver al Catálogo
+                📋 Catálogo de Pruebas
+              </button>
+              <button
+                onClick={handleLogout}
+                className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-900 text-slate-200 text-xs font-medium transition"
+              >
+                🔒 Volver al Login
               </button>
               <button
                 onClick={handleExitApp}
-                className="py-3 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold transition shadow-xs"
+                className="py-2.5 px-3 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition shadow-xs"
                 title="Cerrar la aplicación de escritorio"
               >
-                🚪 Salir
+                🚪 Salir de la App
               </button>
             </div>
           </div>

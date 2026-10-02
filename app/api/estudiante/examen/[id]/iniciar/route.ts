@@ -27,16 +27,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     // Role-based visibility rules:
-    // - Admin & Directivo: can preview from draft onwards (all states)
-    // - Coordinador & Supervisor: can preview all approved, active, or closed exams (and own drafts)
+    // - Admin, Directivo, Coordinador & Supervisor: can preview any exam live in the system
     // - Docente: can preview own exams (any state) or approved/active/closed exams
-    const esAdminODirectivo = ['admin', 'directivo'].includes(session.rol);
+    const esStaffAutorizado = ['admin', 'directivo', 'coordinador', 'supervisor'].includes(session.rol);
     const esCreador = String(examen.creadoPor) === String(session.userId);
     const esAprobadoOActivo = ['aprobado', 'activo', 'cerrado'].includes(examen.estado as string);
 
-    if (!esAdminODirectivo && !esCreador && !esAprobadoOActivo) {
+    if (!esStaffAutorizado && !esCreador && !esAprobadoOActivo) {
       return NextResponse.json({
-        error: 'Este examen aún se encuentra en borrador o pendiente de aprobación. Solo el creador, directivos o administradores pueden visualizarlo.',
+        error: 'Este examen aún se encuentra en borrador o pendiente de aprobación. Solo el creador, coordinadores, directivos o administradores pueden visualizarlo.',
       }, { status: 403 });
     }
 

@@ -21,41 +21,29 @@ export async function GET(req: NextRequest) {
   // Build role-based base filter
   const roleFilter: Record<string, unknown> = {};
 
-  if (['admin', 'directivo'].includes(session.rol)) {
-    // Admin & Directivo: full visibility of all exams (including all drafts)
+  if (['admin', 'directivo', 'coordinador', 'supervisor'].includes(session.rol)) {
+    // Admin, Directivo, Coordinador, Supervisor: full visibility of all institution exams
     if (estadoParam) roleFilter.estado = estadoParam;
-  } else if (['coordinador', 'supervisor'].includes(session.rol)) {
-    // Coordinador: see all approved, active, or closed exams in the school, plus own drafts
-    if (estadoParam) {
-      roleFilter.estado = estadoParam;
-    } else {
-      roleFilter.$or = [
-        { estado: { $in: ['aprobado', 'activo', 'cerrado'] } },
-        { creadoPor: session.userId },
-      ];
-    }
   } else {
-    // Docente: see own exams (any state) or approved/active/closed exams for their assigned courses/subjects
+    // Docente: see own exams (any state), assigned exams/courses, and all approved/active/closed exams
     const user = await db.collection('ex_usuarios').findOne({ username: session.username.toLowerCase() });
     const userCursos = (user?.cursosAsignados as string[]) || [];
+    const userExamenes = (user?.examenesAsignados as string[]) || [];
 
     const docenteConditions: Record<string, unknown>[] = [
       { creadoPor: session.userId },
+      { estado: { $in: ['aprobado', 'activo', 'cerrado'] } },
     ];
 
+    if (userExamenes.length > 0) {
+      const objectIds = userExamenes.filter(id => ObjectId.isValid(id)).map(id => new ObjectId(id));
+      if (objectIds.length > 0) {
+        docenteConditions.push({ _id: { $in: objectIds } });
+      }
+    }
+
     if (userCursos.length > 0) {
-      docenteConditions.push({
-        estado: { $in: ['aprobado', 'activo', 'cerrado'] },
-        $or: [
-          { cursos: { $in: userCursos } },
-          { cursos: { $size: 0 } },
-          { esAdmision: true },
-        ],
-      });
-    } else {
-      docenteConditions.push({
-        estado: { $in: ['aprobado', 'activo', 'cerrado'] },
-      });
+      docenteConditions.push({ cursos: { $in: userCursos } });
     }
 
     if (estadoParam) {
