@@ -26,7 +26,10 @@
       "output": "C:/Users/Soporte-CNSLG/AppData/Local/Temp/examenes-cnslg-dist"
     },
     "win": {
-      "target": ["nsis", "portable"],
+      "target": [
+        "nsis",
+        "portable"
+      ],
       "icon": "public/icon.ico"
     },
     "nsis": {
@@ -53,6 +56,7 @@
     "bcryptjs": "^3.0.3",
     "date-fns": "^4.1.0",
     "jose": "^6.0.11",
+    "katex": "^0.19.0",
     "mammoth": "^1.9.1",
     "mongodb": "^6.18.0",
     "next": "16.3.8",
@@ -66,6 +70,7 @@
     "@tailwindcss/postcss": "^4",
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.10",
+    "@types/katex": "^0.16.8",
     "@types/node": "^20",
     "@types/pdf-parse": "^1.1.5",
     "@types/react": "^19",

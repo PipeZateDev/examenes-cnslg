@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import Link from 'next/link';
 import type { Rol } from '@/lib/types';
+import DashboardHeader from './DashboardHeader';
 
 const MENU_ITEMS: { href: string; label: string; icon: string; desc: string; minRol: Rol }[] = [
   { href: '/examen/staff', label: 'Vista en Vivo Alumno', icon: '👁️', desc: 'Ver y probar exámenes exactamente como los ve el alumno', minRol: 'docente' },
@@ -35,26 +36,11 @@ export default async function DashboardPage() {
   return (
     <div className="min-h-screen bg-slate-100">
       {/* Top navbar */}
-      <header className="bg-blue-900 text-white px-6 py-4 flex items-center justify-between shadow-lg">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl">🏫</span>
-          <div>
-            <h1 className="font-bold text-lg leading-tight">exámenes CNSLG</h1>
-            <p className="text-blue-300 text-xs">Colegio Nuevo San Luis Gonzaga</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="text-right">
-            <p className="text-sm font-medium">{session.nombre}</p>
-            <p className="text-blue-300 text-xs capitalize">{rolLabels[session.rol]}</p>
-          </div>
-          <form action="/api/auth/logout" method="POST">
-            <button type="submit" className="text-xs bg-blue-800 hover:bg-blue-700 px-3 py-1.5 rounded-lg transition">
-              Salir
-            </button>
-          </form>
-        </div>
-      </header>
+      <DashboardHeader
+        user={{ nombre: session.nombre, rol: session.rol }}
+        rolLabels={rolLabels}
+      />
+
 
       {/* Main content */}
       <main className="max-w-6xl mx-auto px-6 py-8">

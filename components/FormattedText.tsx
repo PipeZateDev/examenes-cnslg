@@ -1,27 +1,109 @@
 'use client';
 
 import React from 'react';
+import katex from 'katex';
 
 /**
- * Parses markdown inline formatting (bold, underline, italic, strikethrough, code)
+ * Safely renders a LaTeX math string via KaTeX into HTML.
+ * If KaTeX fails, falls back gracefully to raw string.
+ */
+function renderKatex(mathStr: string, isBlock: boolean = false): React.ReactNode {
+  try {
+    const html = katex.renderToString(mathStr.trim(), {
+      displayMode: isBlock,
+      throwOnError: false,
+      output: 'htmlAndMathml',
+      strict: false,
+    });
+    return (
+      <span
+        className={isBlock ? 'block my-2 text-center overflow-x-auto py-1' : 'inline-block align-baseline mx-0.5'}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    );
+  } catch (err) {
+    return <span className="font-mono text-indigo-700">{mathStr}</span>;
+  }
+}
+
+/**
+ * Checks if a string is a standard currency price in Colombian Pesos (e.g. $12.500, $80.000, $600)
+ */
+function isCurrencyMatch(str: string): boolean {
+  return /^\$\s*\d{1,3}(\.\d{3})+(\s*pesos|\s*cop)?$/i.test(str.trim()) || /^\$\s*\d+\s*(pesos|cop)?$/i.test(str.trim());
+}
+
+/**
+ * Parses inline formatting:
+ * 1. KaTeX Math: $$...$$, $...$, \(...\), \[...\]
+ * 2. HTML Sup/Sub: <sup>...</sup>, <sub>...</sub>
+ * 3. Markdown / HTML formatting: **bold**, <u>underline</u>, *italic*, ~~strikethrough~~, `code`
  */
 function parseInline(text: string): React.ReactNode {
   if (!text) return null;
 
-  // Regex tokenizing inline formatting:
-  // 1) **bold** or <b>bold</b> or <strong>bold</strong>
-  // 2) <u>underline</u> or __underline__
-  // 3) *italic* or <i>italic</i> or <em>italic</em>
-  // 4) ~~strikethrough~~ or <s>strikethrough</s>
-  // 5) `code`
-  const inlineRegex = /(\*\*[^*]+\*\*|<b>[\s\S]*?<\/b>|<strong>[\s\S]*?<\/strong>|<u>[\s\S]*?<\/u>|__[^_]+__|~~[^~]+~~|<s>[\s\S]*?<\/s>|\*[^*]+\*|<i>[\s\S]*?<\/i>|<em>[\s\S]*?<\/em>|`[^`]+`)/gi;
+  // Regex tokenizing:
+  // 1) Block math: $$...$$ or \[...\]
+  // 2) Inline math: $...$ (non-price) or \(...\)
+  // 3) <sup>...</sup> or <sub>...</sub>
+  // 4) **bold**, <b>...</b>, <strong>...</strong>
+  // 5) <u>...</u>, __...__
+  // 6) *italic*, <i>...</i>, <em>...</em>
+  // 7) ~~strike~~, <s>...</s>
+  // 8) `code`
+  const tokenRegex = /(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$(?!\s|\d{1,3}(\.\d{3})+(?!\$))[^$\n]+?\$|<sup>[\s\S]*?<\/sup>|<sub>[\s\S]*?<\/sub>|\*\*[^*]+\*\*|<b>[\s\S]*?<\/b>|<strong>[\s\S]*?<\/strong>|<u>[\s\S]*?<\/u>|__[^_]+__|~~[^~]+~~|<s>[\s\S]*?<\/s>|\*[^*]+\*|<i>[\s\S]*?<\/i>|<em>[\s\S]*?<\/em>|`[^`]+`)/gi;
 
-  const parts = text.split(inlineRegex);
+  const parts = text.split(tokenRegex);
 
   return parts.map((part, idx) => {
     if (!part) return null;
 
-    // Bold
+    // Block Math: $$...$$ or \[...\]
+    if (part.startsWith('$$') && part.endsWith('$$') && part.length >= 4) {
+      const inner = part.slice(2, -2);
+      return <React.Fragment key={idx}>{renderKatex(inner, true)}</React.Fragment>;
+    }
+    if (part.startsWith('\\[') && part.endsWith('\\]') && part.length >= 4) {
+      const inner = part.slice(2, -2);
+      return <React.Fragment key={idx}>{renderKatex(inner, true)}</React.Fragment>;
+    }
+
+    // Inline Math: \(...\)
+    if (part.startsWith('\\(') && part.endsWith('\\)') && part.length >= 4) {
+      const inner = part.slice(2, -2);
+      return <React.Fragment key={idx}>{renderKatex(inner, false)}</React.Fragment>;
+    }
+
+    // Inline Math: $...$ (verifying it's not a single currency amount)
+    if (part.startsWith('$') && part.endsWith('$') && part.length >= 3) {
+      const inner = part.slice(1, -1).trim();
+      // If inner is just a standard price (e.g. $10.000$), keep as text
+      if (!isCurrencyMatch(part) && !isCurrencyMatch(`$${inner}`)) {
+        return <React.Fragment key={idx}>{renderKatex(inner, false)}</React.Fragment>;
+      }
+    }
+
+    // <sup>...</sup>
+    if (part.toLowerCase().startsWith('<sup>') && part.toLowerCase().endsWith('</sup>')) {
+      const inner = part.replace(/^<sup>/i, '').replace(/<\/sup>$/i, '');
+      return (
+        <sup key={idx} className="text-[0.75em] leading-none font-semibold text-indigo-900 align-super px-0.5">
+          {parseInline(inner)}
+        </sup>
+      );
+    }
+
+    // <sub>...</sub>
+    if (part.toLowerCase().startsWith('<sub>') && part.toLowerCase().endsWith('</sub>')) {
+      const inner = part.replace(/^<sub>/i, '').replace(/<\/sub>$/i, '');
+      return (
+        <sub key={idx} className="text-[0.75em] leading-none font-semibold text-indigo-900 align-sub px-0.5">
+          {parseInline(inner)}
+        </sub>
+      );
+    }
+
+    // Bold: **...**, <b>...</b>, <strong>...</strong>
     if (
       (part.startsWith('**') && part.endsWith('**') && part.length >= 4) ||
       (part.toLowerCase().startsWith('<b>') && part.toLowerCase().endsWith('</b>')) ||
@@ -38,7 +120,7 @@ function parseInline(text: string): React.ReactNode {
       );
     }
 
-    // Underline
+    // Underline: <u>...</u>, __...__
     if (
       (part.toLowerCase().startsWith('<u>') && part.toLowerCase().endsWith('</u>')) ||
       (part.startsWith('__') && part.endsWith('__') && part.length >= 4)
@@ -54,7 +136,7 @@ function parseInline(text: string): React.ReactNode {
       );
     }
 
-    // Italic
+    // Italic: *...*, <i>...</i>, <em>...</em>
     if (
       (part.startsWith('*') && part.endsWith('*') && part.length >= 2) ||
       (part.toLowerCase().startsWith('<i>') && part.toLowerCase().endsWith('</i>')) ||
@@ -71,7 +153,7 @@ function parseInline(text: string): React.ReactNode {
       );
     }
 
-    // Strikethrough
+    // Strikethrough: ~~...~~, <s>...</s>
     if (
       (part.startsWith('~~') && part.endsWith('~~') && part.length >= 4) ||
       (part.toLowerCase().startsWith('<s>') && part.toLowerCase().endsWith('</s>'))
@@ -87,7 +169,7 @@ function parseInline(text: string): React.ReactNode {
       );
     }
 
-    // Code
+    // Code: `...`
     if (part.startsWith('`') && part.endsWith('`') && part.length >= 2) {
       const inner = part.slice(1, -1);
       return (
@@ -97,6 +179,7 @@ function parseInline(text: string): React.ReactNode {
       );
     }
 
+    // Process raw text: auto-format LaTeX equations or common powers if any
     return <React.Fragment key={idx}>{part}</React.Fragment>;
   });
 }
@@ -105,6 +188,8 @@ function parseInline(text: string): React.ReactNode {
  * Safely parses markdown/inline formatting:
  * - Line breaks (\n) and paragraph breaks (\n\n)
  * - Headings (# Title, ## Subtitle, ### Section)
+ * - KaTeX math formulas ($...$, $$...$$, \(...\), \[...\])
+ * - Superscripts and subscripts (<sup>, <sub>, x², H₂O)
  * - Bold (**word**), Underline (<u>word</u>), Italic (*word*), Strikethrough (~~word~~)
  */
 export function renderFormattedContent(rawText: string): React.ReactNode {

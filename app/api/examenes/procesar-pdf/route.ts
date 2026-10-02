@@ -231,7 +231,11 @@ async function extractDocxWithTransforms(buffer: Buffer): Promise<ExtractedDocxR
       "u => u",
       "b => strong",
       "i => em",
-      "strike => s"
+      "strike => s",
+      "sup => sup",
+      "sub => sub",
+      "r[style-name='Superscript'] => sup",
+      "r[style-name='Subscript'] => sub"
     ]
   };
 
@@ -249,7 +253,7 @@ async function extractDocxWithTransforms(buffer: Buffer): Promise<ExtractedDocxR
     .replace(/<\/p>/gi, '\n\n')
     .replace(/<\/li>/gi, '\n')
     .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<(?!u|\/u)[^>]+>/g, '') // Strip all other HTML tags except <u> and </u>
+    .replace(/<(?!u|\/u|sup|\/sup|sub|\/sub)[^>]+>/g, '') // Strip all other HTML tags except <u>, <sup>, <sub>
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
@@ -440,6 +444,15 @@ REGLAS OBLIGATORIAS:
 7. REVISIÓN RIGUROSA Y CAMPO "notas":
    - Extrae rigurosamente todas las preguntas numeradas del documento sin omitir ninguna.
    - Si detectas alguna ambigüedad, opción faltante, o detalle que el docente deba verificar antes de activar el examen, regístralo brevemente en el campo "notas" de la pregunta para orientar al docente en el editor.
+
+8. PRESERVACIÓN RIGUROSA DE FÓRMULAS MATEMÁTICAS, CIENTÍFICAS, QUÍMICAS Y EXPONENTES:
+   - Mantén rigurosamente todas las fórmulas matemáticas, ecuaciones, fracciones, expresiones algebraicas, unidades y símbolos científicos, tanto en el enunciado como en las opciones de respuesta.
+   - Usa notación limpia y legible:
+     - Exponentes y potencias: x², x³, x^2, m², cm³, m/s², o <sup>2</sup>
+     - Subíndices y química: CO₂, H₂O, x₁, y₂, o <sub>2</sub>
+     - Fracciones y matemáticas: 1/2, 3/4, o LaTeX si aplica ($x^2 + 5x = 0$, $\frac{a}{b}$, $\sqrt{x}$)
+     - Símbolos: ±, ×, ÷, ≤, ≥, ≠, ≈, π, °, √, α, β, θ, Δ
+   - NUNCA omitas ni aplanes fórmulas convirtiendo x² en x2 o perdiendo términos algebraicos.
 
 Devuelve estrictamente un JSON válido con esta estructura exacta:
 {
