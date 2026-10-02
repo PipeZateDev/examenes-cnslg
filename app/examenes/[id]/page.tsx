@@ -87,13 +87,29 @@ export default async function ExamenDetailPage({ params }: { params: Promise<{ i
               <p className="text-slate-400 text-xs">Intentos presentados</p>
               <p className="font-bold text-slate-700 text-lg">{totalIntentos}</p>
             </div>
-            {activeKey && (
+            {activeKey && examen.estado === 'activo' && (
               <div className="bg-emerald-50 border border-emerald-300 rounded-lg p-3 shadow-xs">
                 <p className="text-emerald-700 text-xs font-bold">🔑 Clave activa del examen</p>
                 <p className="font-bold text-emerald-800 text-2xl font-mono tracking-[0.25em]">{activeKey}</p>
-                {hasRole(session.rol, 'coordinador') && (examen.activadoPor || examenClave?.activadoPor) && (
+                {(examen.activadoPor || examenClave?.activadoPor) && (
                   <p className="text-[11px] text-emerald-900 font-semibold mt-1 border-t border-emerald-200 pt-1">
                     Activado por: <strong>{String(examen.activadoPor || examenClave?.activadoPor)}</strong>
+                  </p>
+                )}
+              </div>
+            )}
+
+            {examen.estado === 'cerrado' && (
+              <div className="bg-slate-50 border border-slate-300 rounded-lg p-3 shadow-xs">
+                <p className="text-red-700 text-xs font-bold">🔴 Examen Cerrado</p>
+                <p className="text-slate-600 text-xs mt-0.5">
+                  {session.rol === 'admin'
+                    ? 'Reapertura habilitada para Administrador.'
+                    : 'Solo el Administrador puede reabrirlo.'}
+                </p>
+                {Boolean(examen.activadoPor) && (
+                  <p className="text-[11px] text-slate-600 font-medium mt-1 border-t border-slate-200 pt-1">
+                    Última activación: <strong>{String(examen.activadoPor)}</strong>
                   </p>
                 )}
               </div>

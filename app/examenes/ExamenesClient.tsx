@@ -211,11 +211,11 @@ export default function ExamenesClient({
                       📅 Creado: {ex.creadoEnFormatted}
                     </span>
 
-                    {/* Show who activated the code for Coordinador and above */}
-                    {esCoordinadorOPlus && ex.activadoPor && (
+                    {/* Show who activated the code */}
+                    {Boolean(ex.activadoPor) && (
                       <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-0.5 rounded-md font-semibold text-[11px]">
                         <span>🔑</span>
-                        <span>Activado por: <strong>{ex.activadoPor}</strong></span>
+                        <span>{ex.estado === 'activo' ? 'Activado por:' : 'Última activación:'} <strong>{ex.activadoPor}</strong></span>
                         {ex.activadoEnFormatted && (
                           <span className="text-emerald-600/80 font-normal">
                             ({ex.activadoEnFormatted})
@@ -235,15 +235,6 @@ export default function ExamenesClient({
                   <span className={`px-3 py-1 rounded-full text-xs font-semibold ${ESTADO_COLORS[ex.estado] || 'bg-gray-100 text-gray-500'}`}>
                     {ESTADO_LABELS[ex.estado] || ex.estado}
                   </span>
-                  <Link
-                    href={`/examen/${ex._id}/presentar`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs"
-                    title="Ver en vivo como alumno"
-                  >
-                    <span>👁️</span>
-                    <span>En Vivo</span>
-                  </Link>
                   <span className="text-slate-400 text-lg group-hover:translate-x-1 transition-transform">→</span>
                 </div>
               </Link>

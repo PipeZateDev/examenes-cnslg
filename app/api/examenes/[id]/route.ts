@@ -50,6 +50,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const currentEx = await db.collection('ex_examenes').findOne({ _id: new ObjectId(id) });
     if (!currentEx) return NextResponse.json({ error: 'Examen no encontrado' }, { status: 404 });
 
+    // REGLA: Si el examen fue cerrado, SOLO el Administrador puede reabrirlo / reactivarlo
+    if (currentEx.estado === 'cerrado' && session.rol !== 'admin') {
+      return NextResponse.json({
+        error: 'Este examen fue cerrado por el docente. Únicamente el Administrador del sistema tiene permisos para reabrirlo y reactivarlo.',
+      }, { status: 403 });
+    }
+
+    // Si está en borrador o pendiente de aprobación, requiere aprobación previa a menos que sea admin/directivo
+    if (['borrador', 'pendiente_aprobacion'].includes(currentEx.estado) && !hasRole(session.rol, 'directivo')) {
+      return NextResponse.json({
+        error: 'El examen debe ser aprobado antes de poder ser activado.',
+      }, { status: 400 });
+    }
+
     // Generate unique 6-character access key for today
     let clave = '';
     let isUnique = false;
@@ -74,6 +88,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       clave = generateExamAccessKey();
     }
     
+    // Mantener siempre el último usuario que activa/reactiva la prueba
     const activadorNombre = session.nombre || session.username;
     const activadorId = session.userId;
     const activadorRol = session.rol;
@@ -90,6 +105,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           activadoPorId: activadorId,
           activadoPorRol: activadorRol,
           activadoEn: now,
+          ...(currentEx.estado === 'cerrado' ? { reactivadoPorAdmin: true, reactivadoEn: now } : {}),
+        },
+        $unset: {
+          cerradoPor: '',
+          cerradoPorId: '',
+          cerradoPorRol: '',
+          cerradoEn: '',
         },
       }
     );
@@ -117,14 +139,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       { upsert: true }
     );
 
-    return NextResponse.json({ ok: true, clave });
+    return NextResponse.json({ ok: true, clave, activadoPor: activadorNombre, estado: 'activo' });
   }
 
   if (action === 'close' && hasRole(session.rol, 'docente')) {
     const today = hoy();
+    const cerradorNombre = session.nombre || session.username;
+    const cerradorId = session.userId;
+    const cerradorRol = session.rol;
+    const now = new Date();
+
     await db.collection('ex_examenes').updateOne(
       { _id: new ObjectId(id) },
-      { $set: { estado: 'cerrado' } }
+      {
+        $set: {
+          estado: 'cerrado',
+          cerradoPor: cerradorNombre,
+          cerradoPorId: cerradorId,
+          cerradoPorRol: cerradorRol,
+          cerradoEn: now,
+        },
+      }
     );
     await db.collection('ex_clave_dia').updateOne(
       { fecha: today },
