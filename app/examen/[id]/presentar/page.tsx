@@ -11,6 +11,7 @@ interface Pregunta {
   peso: number;
   area?: string;
   imagen?: string | null;
+  respuestaCorrecta?: string | null;
 }
 
 interface ExamenData {
@@ -39,6 +40,16 @@ export default function PresentarExamenPage() {
   const [tiempoRestante, setTiempoRestante] = useState<number | null>(null);
   const [tiempoAgotado, setTiempoAgotado] = useState(false);
 
+  // Staff preview state
+  const [isStaffPreview, setIsStaffPreview] = useState(false);
+  const [staffInfo, setStaffInfo] = useState<{ nombre: string; rol: string } | null>(null);
+  const [previewResult, setPreviewResult] = useState<{
+    calificacionFinal: number;
+    correctas: number;
+    total: number;
+    porArea?: Array<{ area: string; puntaje: number; correctas: number; total: number }>;
+  } | null>(null);
+
   // Store latest state in refs to safely access in async timers without stale closure
   const respuestasRef = useRef(respuestas);
   respuestasRef.current = respuestas;
@@ -52,6 +63,18 @@ export default function PresentarExamenPage() {
   const enviandoRef = useRef(enviando);
   enviandoRef.current = enviando;
 
+  const isStaffPreviewRef = useRef(isStaffPreview);
+  isStaffPreviewRef.current = isStaffPreview;
+
+  // Handle Electron close app
+  const handleExitApp = () => {
+    if (typeof window !== 'undefined' && (window as any).electronAPI?.closeApp) {
+      (window as any).electronAPI.closeApp();
+    } else {
+      router.push('/examen/staff');
+    }
+  };
+
   // Handler for submitting responses
   const handleEnviar = useCallback(async (autoEnvio = false) => {
     if (!examenRef.current || !intentoIdRef.current || enviandoRef.current) return;
@@ -61,6 +84,63 @@ export default function PresentarExamenPage() {
       setTiempoAgotado(true);
     }
 
+    // ─── STAFF PREVIEW: Evaluate in-memory, ZERO DB writes ─────────────────────
+    if (isStaffPreviewRef.current) {
+      const ex = examenRef.current;
+      const resps = respuestasRef.current;
+      let calificacionFinal = 0;
+      let correctasCount = 0;
+
+      const areasMap = new Map<string, { total: number; correctas: number; pesoTotal: number; pesoObtenido: number }>();
+
+      (ex.preguntas || []).forEach(p => {
+        const sel = resps[p.orden] || null;
+        const isCorrect = sel !== null && sel === p.respuestaCorrecta;
+        if (isCorrect) {
+          calificacionFinal += (p.peso || 0);
+          correctasCount += 1;
+        }
+
+        if (ex.esAdmision) {
+          const a = p.area || 'General';
+          if (!areasMap.has(a)) {
+            areasMap.set(a, { total: 0, correctas: 0, pesoTotal: 0, pesoObtenido: 0 });
+          }
+          const item = areasMap.get(a)!;
+          item.total += 1;
+          item.pesoTotal += (p.peso || 0);
+          if (isCorrect) {
+            item.correctas += 1;
+            item.pesoObtenido += (p.peso || 0);
+          }
+        }
+      });
+
+      let porArea: Array<{ area: string; puntaje: number; correctas: number; total: number }> | undefined;
+      if (ex.esAdmision && areasMap.size > 0) {
+        porArea = Array.from(areasMap.entries()).map(([area, data]) => ({
+          area,
+          puntaje: data.pesoTotal > 0 ? Math.round((data.pesoObtenido / data.pesoTotal) * 100) : 0,
+          correctas: data.correctas,
+          total: data.total,
+        }));
+        calificacionFinal = Math.round(porArea.reduce((sum, a) => sum + a.puntaje, 0) / porArea.length);
+      }
+
+      setPreviewResult({
+        calificacionFinal: Math.min(100, Math.round(calificacionFinal)),
+        correctas: correctasCount,
+        total: ex.preguntas.length,
+        porArea,
+      });
+
+      setConfirmEnvio(false);
+      setEnviando(false);
+      enviandoRef.current = false;
+      return;
+    }
+
+    // ─── REGULAR STUDENT: Send to server ──────────────────────────────────────
     try {
       await fetch(`/api/estudiante/examen/${id}/enviar`, {
         method: 'POST',
@@ -86,7 +166,7 @@ export default function PresentarExamenPage() {
     }
   }, [id, router]);
 
-  // Load exam and create attempt
+  // Load exam and create/simulate attempt
   useEffect(() => {
     async function init() {
       try {
@@ -100,6 +180,14 @@ export default function PresentarExamenPage() {
         const data = await res.json();
         setExamen(data.examen);
         setIntentoId(data.intentoId);
+        setIsStaffPreview(Boolean(data.isStaffPreview));
+
+        if (data.isStaffPreview) {
+          setStaffInfo({
+            nombre: data.usuario || 'Personal Staff',
+            rol: data.rol || 'Staff',
+          });
+        }
 
         if (data.tiempoRestanteSegundos !== undefined && data.tiempoRestanteSegundos !== null) {
           setTiempoRestante(data.tiempoRestanteSegundos);
@@ -162,12 +250,20 @@ export default function PresentarExamenPage() {
           <div className="text-5xl mb-4">⚠️</div>
           <h2 className="text-xl font-bold text-red-700 mb-2">Atención</h2>
           <p className="text-slate-600 mb-6 text-sm leading-relaxed">{error}</p>
-          <a
-            href="/examen/login"
-            className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2.5 rounded-xl text-sm transition"
-          >
-            Volver al inicio
-          </a>
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() => router.push('/examen/staff')}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2.5 rounded-xl text-sm transition"
+            >
+              ← Volver al Catálogo de Pruebas
+            </button>
+            <a
+              href="/examen/login"
+              className="text-xs text-slate-500 hover:text-slate-700 underline pt-1"
+            >
+              Ir a la pantalla de ingreso
+            </a>
+          </div>
         </div>
       </div>
     );
@@ -190,8 +286,54 @@ export default function PresentarExamenPage() {
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
+  const rolLabels: Record<string, string> = {
+    admin: 'Administrador',
+    directivo: 'Directivo',
+    coordinador: 'Coordinador',
+    supervisor: 'Supervisor',
+    docente: 'Docente',
+    estudiante: 'Estudiante',
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col select-none">
+      {/* ─── STAFF PREVIEW TOP BANNER ────────────────────────────────────────── */}
+      {isStaffPreview && (
+        <div className="bg-gradient-to-r from-amber-600 via-indigo-700 to-blue-800 text-white px-4 sm:px-6 py-2.5 flex items-center justify-between shadow-md z-40 text-xs sm:text-sm flex-wrap gap-2">
+          <div className="flex items-center gap-2.5">
+            <span className="bg-white/20 text-white font-extrabold px-2.5 py-0.5 rounded-md uppercase tracking-wider text-[11px] shadow-xs">
+              👁️ Vista en Vivo Alumno
+            </span>
+            <span className="font-semibold text-white/90 truncate max-w-xs">
+              {staffInfo ? `${rolLabels[staffInfo.rol] || staffInfo.rol}: ${staffInfo.nombre}` : 'Modo Personal Staff'}
+            </span>
+            <span className="hidden md:inline-block text-white/60">•</span>
+            <span className="hidden md:inline-block text-white/80 text-xs">
+              Sin registro de respuestas en BDD
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => router.push('/examen/staff')}
+              className="bg-white/15 hover:bg-white/25 text-white font-semibold px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1.5"
+              title="Cerrar la vista de este examen y regresar al catálogo"
+            >
+              <span>←</span>
+              <span>Ver Otras Pruebas</span>
+            </button>
+            <button
+              onClick={handleExitApp}
+              className="bg-red-600 hover:bg-red-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1 shadow-xs"
+              title="Salir y cerrar el aplicativo de escritorio"
+            >
+              <span>🚪</span>
+              <span>Salir de la App</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Top Header Bar */}
       <header className="bg-white border-b border-slate-200 shadow-sm px-6 py-3.5 flex items-center justify-between sticky top-0 z-30">
         <div className="flex-1 mr-4">
@@ -368,7 +510,7 @@ export default function PresentarExamenPage() {
               onClick={() => setConfirmEnvio(true)}
               className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 font-bold text-sm transition shadow-md shadow-emerald-600/20"
             >
-              Finalizar y Enviar ✓
+              {isStaffPreview ? 'Simular Envío de Respuestas ✓' : 'Finalizar y Enviar ✓'}
             </button>
           )}
         </div>
@@ -378,18 +520,22 @@ export default function PresentarExamenPage() {
       {confirmEnvio && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full text-center border border-slate-100">
-            <div className="text-5xl mb-4">📤</div>
-            <h3 className="text-xl font-bold text-slate-800 mb-2">¿Enviar respuestas?</h3>
+            <div className="text-5xl mb-4">{isStaffPreview ? '👁️' : '📤'}</div>
+            <h3 className="text-xl font-bold text-slate-800 mb-2">
+              {isStaffPreview ? '¿Simular Finalización?' : '¿Enviar respuestas?'}
+            </h3>
             <p className="text-slate-600 text-sm mb-2">
               Has respondido <strong>{respondidas}</strong> de <strong>{total}</strong> preguntas.
             </p>
             {respondidas < total && (
               <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs p-2.5 rounded-xl mb-3">
-                ⚠️ Aún te faltan <strong>{total - respondidas}</strong> preguntas por responder.
+                ⚠️ Aún faltan <strong>{total - respondidas}</strong> preguntas sin responder.
               </div>
             )}
             <p className="text-slate-500 text-xs mb-6">
-              Al enviar, se registrará tu intento y se procederá al cierre de la aplicación.
+              {isStaffPreview
+                ? 'Estás en modo Staff. Verás la calificación obtenida en memoria sin alterar ninguna base de datos.'
+                : 'Al enviar, se registrará tu intento y se procederá al cierre de la aplicación.'}
             </p>
             <div className="flex gap-3">
               <button
@@ -404,7 +550,80 @@ export default function PresentarExamenPage() {
                 className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 text-sm font-bold transition shadow-sm"
                 disabled={enviando}
               >
-                {enviando ? 'Enviando...' : 'Sí, enviar'}
+                {enviando ? 'Calculando...' : isStaffPreview ? 'Ver Resultado' : 'Sí, enviar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Staff Preview Results Screen Modal */}
+      {previewResult && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-lg w-full text-center border border-slate-200">
+            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4">
+              🎉
+            </div>
+            <h2 className="text-2xl font-bold text-slate-800 mb-1">Simulación de Examen Completada</h2>
+            <p className="text-slate-500 text-xs mb-6">
+              Resultado de la vista en vivo para el usuario staff <strong>{staffInfo?.nombre}</strong>
+            </p>
+
+            {/* Score box */}
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-6 mb-6">
+              <p className="text-xs font-bold uppercase tracking-wider text-blue-700 mb-1">
+                Calificación Obtenida en la Simulación
+              </p>
+              <p className="text-5xl font-extrabold text-blue-900 mb-2">
+                {previewResult.calificacionFinal}<span className="text-2xl font-medium text-blue-600"> / 100</span>
+              </p>
+              <p className="text-sm font-medium text-slate-600">
+                {previewResult.correctas} de {previewResult.total} preguntas correctas
+              </p>
+
+              {/* Admissions breakdown if present */}
+              {previewResult.porArea && previewResult.porArea.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-blue-200/60 grid grid-cols-2 gap-2 text-left">
+                  {previewResult.porArea.map(a => (
+                    <div key={a.area} className="bg-white/80 p-2 rounded-xl text-xs border border-blue-100">
+                      <p className="font-bold text-slate-700 truncate">{a.area}</p>
+                      <p className="text-blue-800 font-semibold">{a.puntaje}% ({a.correctas}/{a.total})</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-800 mb-6 text-left flex items-start gap-2">
+              <span className="text-base flex-shrink-0">🔒</span>
+              <span>
+                <strong>Modo Seguro Staff:</strong> Ningún intento ni respuesta fue almacenado en la base de datos de producción.
+              </span>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={() => {
+                  setPreviewResult(null);
+                  setRespuestas({});
+                  setCurrent(0);
+                }}
+                className="flex-1 py-3 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm font-semibold transition"
+              >
+                🔄 Repetir Prueba
+              </button>
+              <button
+                onClick={() => router.push('/examen/staff')}
+                className="flex-1 py-3 rounded-xl bg-blue-600 text-white hover:bg-blue-700 text-sm font-bold transition shadow-sm"
+              >
+                ← Volver al Catálogo
+              </button>
+              <button
+                onClick={handleExitApp}
+                className="py-3 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold transition shadow-xs"
+                title="Cerrar la aplicación de escritorio"
+              >
+                🚪 Salir
               </button>
             </div>
           </div>
@@ -412,7 +631,7 @@ export default function PresentarExamenPage() {
       )}
 
       {/* Auto-Submit Time's Up Screen */}
-      {tiempoAgotado && (
+      {tiempoAgotado && !previewResult && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center z-50 p-4 text-white">
           <div className="bg-slate-800 border border-slate-700 rounded-3xl shadow-2xl p-8 max-w-md w-full text-center">
             <div className="text-6xl mb-4 animate-bounce">⏰</div>

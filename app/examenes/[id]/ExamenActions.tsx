@@ -110,10 +110,19 @@ export default function ExamenActions({ examenId, estado, totalIntentos = 0, esA
           </div>
         )}
 
+        {/* Live Student Preview */}
+        <Link
+          href={`/examen/${examenId}/presentar`}
+          className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-sm font-semibold transition flex items-center gap-1.5 shadow-xs"
+          title="Ver y presentar la prueba en vivo exactamente como la ve un estudiante (sin clave y sin dejar trazas)"
+        >
+          👁️ Ver en Vivo como Alumno
+        </Link>
+
         {/* Results */}
         <Link
           href={`/resultados/${examenId}`}
-          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition"
+          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition flex items-center gap-1"
         >
           📊 Ver Resultados
         </Link>

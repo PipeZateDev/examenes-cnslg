@@ -4,6 +4,7 @@ import Link from 'next/link';
 import type { Rol } from '@/lib/types';
 
 const MENU_ITEMS: { href: string; label: string; icon: string; desc: string; minRol: Rol }[] = [
+  { href: '/examen/staff', label: 'Vista en Vivo Alumno', icon: '👁️', desc: 'Ver y probar exámenes exactamente como los ve el alumno', minRol: 'docente' },
   { href: '/examenes', label: 'Exámenes', icon: '📝', desc: 'Gestionar y crear exámenes', minRol: 'docente' },
   { href: '/examenes/nuevo', label: 'Nuevo Examen', icon: '➕', desc: 'Crear examen desde PDF/WORD', minRol: 'docente' },
   { href: '/resultados', label: 'Resultados', icon: '📊', desc: 'Ver resultados en tiempo real', minRol: 'docente' },

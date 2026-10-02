@@ -7,11 +7,72 @@ import { ObjectId } from 'mongodb';
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await getSessionFromRequest(req);
-  if (!session || session.rol !== 'estudiante') {
+  if (!session) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 
   const db = await getDb();
+
+  // ─── STAFF LIVE PREVIEW MODE (Zero DB trace) ───────────────────────────────
+  if (session.rol !== 'estudiante') {
+    let examen = null;
+    try {
+      examen = await db.collection('ex_examenes').findOne({ _id: new ObjectId(id) });
+    } catch (_) {
+      return NextResponse.json({ error: 'ID de examen no válido' }, { status: 400 });
+    }
+
+    if (!examen) {
+      return NextResponse.json({ error: 'Examen no encontrado' }, { status: 404 });
+    }
+
+    // Role-based visibility rules:
+    // - Admin & Directivo: can preview from draft onwards (all states)
+    // - Coordinador & Supervisor: can preview all approved, active, or closed exams (and own drafts)
+    // - Docente: can preview own exams (any state) or approved/active/closed exams
+    const esAdminODirectivo = ['admin', 'directivo'].includes(session.rol);
+    const esCreador = String(examen.creadoPor) === String(session.userId);
+    const esAprobadoOActivo = ['aprobado', 'activo', 'cerrado'].includes(examen.estado as string);
+
+    if (!esAdminODirectivo && !esCreador && !esAprobadoOActivo) {
+      return NextResponse.json({
+        error: 'Este examen aún se encuentra en borrador o pendiente de aprobación. Solo el creador, directivos o administradores pueden visualizarlo.',
+      }, { status: 403 });
+    }
+
+    const preguntas = (examen.preguntas || []).map((p: any) => ({
+      orden: p.orden,
+      enunciado: p.enunciado,
+      opciones: p.opciones || [],
+      peso: p.peso || 0,
+      imagen: p.imagen || null,
+      area: p.area || null,
+      respuestaCorrecta: p.respuestaCorrecta || null,
+    }));
+
+    return NextResponse.json({
+      ok: true,
+      examen: {
+        _id: examen._id.toString(),
+        titulo: examen.titulo || 'Sin título',
+        materia: examen.materia || '',
+        descripcion: examen.descripcion || '',
+        esAdmision: Boolean(examen.esAdmision),
+        duracionMinutos: examen.duracionMinutos || null,
+        intentosPermitidos: examen.intentosPermitidos || 1,
+        estado: examen.estado,
+        preguntas,
+      },
+      intentoId: 'preview-staff',
+      intentoNumero: 1,
+      tiempoRestanteSegundos: examen.duracionMinutos ? examen.duracionMinutos * 60 : null,
+      isStaffPreview: true,
+      usuario: session.nombre,
+      rol: session.rol,
+    });
+  }
+
+  // ─── REGULAR STUDENT FLOW ──────────────────────────────────────────────────
   const studentId = session.username;
 
   // 1. Get exam (no answer keys sent to student)
@@ -27,7 +88,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         'preguntas.peso': 1,
         'preguntas.imagen': 1,
         'preguntas.area': 1,
-        // respuestaCorrecta is intentionally excluded
+        // respuestaCorrecta is intentionally excluded for students
       }
     }
   );

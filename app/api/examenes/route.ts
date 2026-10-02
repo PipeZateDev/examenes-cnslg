@@ -4,39 +4,118 @@ import { getSessionFromRequest, hasRole } from '@/lib/auth';
 import { generateExamAccessKey, distribuirPesos, hoy } from '@/lib/utils';
 import { ObjectId } from 'mongodb';
 
-// GET /api/examenes - list exams
+// GET /api/examenes - list exams with role-based permissions
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
-  if (!session || session.rol === 'estudiante') return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+  if (!session || session.rol === 'estudiante') {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+  }
 
   const db = await getDb();
   const { searchParams } = new URL(req.url);
-  const estado = searchParams.get('estado');
+  const estadoParam = searchParams.get('estado');
   const all = searchParams.get('all') === '1';
   const admisionParam = searchParams.get('admision');
+  const search = searchParams.get('q')?.trim();
 
-  const filter: Record<string, unknown> = {};
-  if (!all && admisionParam !== null) {
-    filter.esAdmision = admisionParam === '1';
+  // Build role-based base filter
+  const roleFilter: Record<string, unknown> = {};
+
+  if (['admin', 'directivo'].includes(session.rol)) {
+    // Admin & Directivo: full visibility of all exams (including all drafts)
+    if (estadoParam) roleFilter.estado = estadoParam;
+  } else if (['coordinador', 'supervisor'].includes(session.rol)) {
+    // Coordinador: see all approved, active, or closed exams in the school, plus own drafts
+    if (estadoParam) {
+      roleFilter.estado = estadoParam;
+    } else {
+      roleFilter.$or = [
+        { estado: { $in: ['aprobado', 'activo', 'cerrado'] } },
+        { creadoPor: session.userId },
+      ];
+    }
+  } else {
+    // Docente: see own exams (any state) or approved/active/closed exams for their assigned courses/subjects
+    const user = await db.collection('ex_usuarios').findOne({ username: session.username.toLowerCase() });
+    const userCursos = (user?.cursosAsignados as string[]) || [];
+
+    const docenteConditions: Record<string, unknown>[] = [
+      { creadoPor: session.userId },
+    ];
+
+    if (userCursos.length > 0) {
+      docenteConditions.push({
+        estado: { $in: ['aprobado', 'activo', 'cerrado'] },
+        $or: [
+          { cursos: { $in: userCursos } },
+          { cursos: { $size: 0 } },
+          { esAdmision: true },
+        ],
+      });
+    } else {
+      docenteConditions.push({
+        estado: { $in: ['aprobado', 'activo', 'cerrado'] },
+      });
+    }
+
+    if (estadoParam) {
+      roleFilter.$and = [
+        { estado: estadoParam },
+        { $or: docenteConditions },
+      ];
+    } else {
+      roleFilter.$or = docenteConditions;
+    }
   }
-  if (estado) filter.estado = estado;
+
+  // Admissions filter
+  if (!all && admisionParam !== null) {
+    roleFilter.esAdmision = admisionParam === '1';
+  }
+
+  // Text search filter
+  if (search) {
+    const searchRegex = new RegExp(search, 'i');
+    roleFilter.$and = [
+      ...(roleFilter.$and as Array<Record<string, unknown>> || []),
+      {
+        $or: [
+          { titulo: searchRegex },
+          { materia: searchRegex },
+          { cursos: searchRegex },
+        ],
+      },
+    ];
+  }
 
   const examenes = await db.collection('ex_examenes')
-    .find(filter)
+    .find(roleFilter)
     .sort({ creadoEn: -1 })
     .project({
       titulo: 1,
       materia: 1,
+      descripcion: 1,
       estado: 1,
       creadoEn: 1,
+      creadoPor: 1,
       cursos: 1,
       esAdmision: 1,
+      duracionMinutos: 1,
       claveAcceso: 1,
-      preguntas: { $size: '$preguntas' }
+      activadoPor: 1,
+      activadoEn: 1,
+      preguntas: { $size: '$preguntas' },
     })
     .toArray();
 
-  return NextResponse.json({ examenes });
+  return NextResponse.json({
+    examenes,
+    user: {
+      nombre: session.nombre,
+      rol: session.rol,
+      userId: session.userId,
+    },
+  });
 }
 
 // POST /api/examenes - create exam
