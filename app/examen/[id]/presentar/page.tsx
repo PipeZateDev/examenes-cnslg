@@ -326,18 +326,26 @@ export default function PresentarExamenPage() {
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="bg-emerald-700 hover:bg-emerald-600 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              title="Cerrar la vista de este examen y regresar al panel principal"
+            >
+              <span>🏠</span>
+              <span>Volver a la Pantalla Principal</span>
+            </button>
             <button
               onClick={() => router.push('/examen/staff')}
-              className="bg-white/15 hover:bg-white/25 text-white font-semibold px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1.5"
-              title="Cerrar la vista de este examen y regresar al catálogo"
+              className="bg-white/15 hover:bg-white/25 text-white font-semibold px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1.5 cursor-pointer"
+              title="Cerrar la vista de este examen y regresar al catálogo de pruebas"
             >
-              <span>←</span>
+              <span>📋</span>
               <span>Ver Otras Pruebas</span>
             </button>
             <button
               onClick={handleLogout}
-              className="bg-white/10 hover:bg-white/20 text-white font-medium px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1"
+              className="bg-white/10 hover:bg-white/20 text-white font-medium px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1 cursor-pointer"
               title="Cerrar sesión y volver a la pantalla de login"
             >
               <span>🔒</span>
@@ -345,7 +353,7 @@ export default function PresentarExamenPage() {
             </button>
             <button
               onClick={handleExitApp}
-              className="bg-red-600 hover:bg-red-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1 shadow-xs"
+              className="bg-red-600 hover:bg-red-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1 shadow-xs cursor-pointer"
               title="Salir y cerrar inmediatamente el aplicativo de escritorio"
             >
               <span>🚪</span>
@@ -501,20 +509,20 @@ export default function PresentarExamenPage() {
       )}
 
       {/* ─── 16:9 Widescreen Main Question View (2 Columns) ────────────────── */}
-      <main className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 w-full max-w-7xl mx-auto">
-        <div className="w-full bg-white rounded-3xl shadow-2xl p-6 sm:p-8 border border-slate-200 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[500px]">
+      <main className="flex-1 flex flex-col items-center justify-center p-2 sm:p-4 w-full max-w-7xl mx-auto overflow-hidden">
+        <div className="w-full bg-white rounded-3xl shadow-2xl p-4 sm:p-6 border border-slate-200 grid grid-cols-1 lg:grid-cols-12 gap-5 h-full max-h-[calc(100vh-160px)] min-h-[480px]">
           
           {/* ─── LEFT COLUMN: Question Enunciado & Diagram ─────────────────── */}
-          <div className="lg:col-span-7 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-slate-100 lg:pr-6 pb-6 lg:pb-0">
-            <div>
+          <div className="lg:col-span-7 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-slate-100 lg:pr-5 pb-3 lg:pb-0 h-full overflow-hidden">
+            <div className="flex-1 overflow-y-auto pr-2">
               {/* Header tags */}
-              <div className="flex items-center justify-between mb-4 flex-wrap gap-2 pb-3 border-b border-slate-100">
+              <div className="flex items-center justify-between mb-3 flex-wrap gap-2 pb-2 border-b border-slate-100">
                 <div className="flex items-center gap-2">
-                  <span className="bg-blue-100 text-blue-900 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
+                  <span className="bg-blue-100 text-blue-900 text-xs font-bold px-3 py-0.5 rounded-full uppercase tracking-wider">
                     Pregunta {current + 1} de {total}
                   </span>
                   {pregunta.area && (
-                    <span className="bg-purple-100 text-purple-900 text-xs font-semibold px-2.5 py-1 rounded-full border border-purple-200">
+                    <span className="bg-purple-100 text-purple-900 text-xs font-semibold px-2.5 py-0.5 rounded-full border border-purple-200">
                       {pregunta.area}
                     </span>
                   )}
@@ -524,25 +532,33 @@ export default function PresentarExamenPage() {
                 </span>
               </div>
 
-              {/* Enunciado text */}
-              <div className="text-slate-800 text-lg md:text-xl leading-relaxed mb-6 font-medium">
+              {/* Enunciado text with dynamic adaptive sizing */}
+              <div className={`text-slate-800 font-medium ${
+                (pregunta.enunciado || '').length > 1500
+                  ? 'text-xs md:text-[13px] leading-relaxed'
+                  : (pregunta.enunciado || '').length > 750
+                  ? 'text-[13px] md:text-sm leading-relaxed'
+                  : (pregunta.enunciado || '').length > 300
+                  ? 'text-sm md:text-base leading-relaxed'
+                  : 'text-base md:text-lg leading-relaxed'
+              } mb-4`}>
                 <FormattedText text={pregunta.enunciado} />
               </div>
 
               {/* Diagram / Image if present */}
               {pregunta.imagen && (
-                <div className="mb-4 flex justify-center bg-slate-50 p-4 rounded-2xl border border-slate-200 shadow-inner">
+                <div className="mb-4 flex justify-center bg-slate-50 p-3 rounded-2xl border border-slate-200 shadow-inner">
                   <img
                     src={pregunta.imagen}
                     alt={`Diagrama de la pregunta ${pregunta.orden}`}
-                    className="max-h-72 max-w-full rounded-xl object-contain shadow-sm bg-white p-2"
+                    className="max-h-52 max-w-full rounded-xl object-contain shadow-sm bg-white p-1.5"
                   />
                 </div>
               )}
             </div>
 
             {/* Bottom status note */}
-            <div className="text-xs text-slate-400 pt-3 border-t border-slate-100 flex items-center justify-between">
+            <div className="text-xs text-slate-400 pt-2 border-t border-slate-100 flex items-center justify-between flex-shrink-0">
               <span>💡 Lee atentamente y selecciona tu respuesta a la derecha.</span>
               {respuestas[pregunta.orden] ? (
                 <span className="text-emerald-600 font-bold">✓ Opción {respuestas[pregunta.orden]} seleccionada</span>
@@ -553,29 +569,32 @@ export default function PresentarExamenPage() {
           </div>
 
           {/* ─── RIGHT COLUMN: Options & Navigation ────────────────────────── */}
-          <div className="lg:col-span-5 flex flex-col justify-between pl-0 lg:pl-2">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
+          <div className="lg:col-span-5 flex flex-col justify-between pl-0 lg:pl-2 h-full overflow-hidden">
+            <div className="flex-1 overflow-y-auto pr-1">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
                 Opciones de respuesta:
               </p>
 
               {/* Options list */}
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {pregunta.opciones.map(opcion => {
                   const selected = respuestas[pregunta.orden] === opcion.letra;
+                  const isLong = (opcion.texto || '').length > 80;
                   return (
                     <button
                       key={opcion.letra}
                       type="button"
                       onClick={() => setRespuestas(r => ({ ...r, [pregunta.orden]: opcion.letra }))}
-                      className={`w-full text-left flex items-start gap-4 px-5 py-3.5 rounded-2xl border-2 transition-all cursor-pointer ${
+                      className={`w-full text-left flex items-start gap-3 ${
+                        isLong ? 'px-3.5 py-2' : 'px-4 py-2.5'
+                      } rounded-2xl border-2 transition-all cursor-pointer ${
                         selected
                           ? 'border-blue-600 bg-blue-50/80 text-blue-950 shadow-md ring-2 ring-blue-400/30 font-semibold'
                           : 'border-slate-200 bg-white text-slate-800 hover:border-blue-300 hover:bg-slate-50/80'
                       }`}
                     >
                       <span
-                        className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition ${
+                        className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs transition ${
                           selected ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600'
                         }`}
                       >
@@ -583,16 +602,18 @@ export default function PresentarExamenPage() {
                       </span>
                       <div className="flex-1 pt-0.5">
                         {opcion.texto && (
-                          <div className="leading-relaxed font-medium text-sm md:text-base">
+                          <div className={`leading-snug font-medium ${
+                            isLong ? 'text-xs md:text-sm' : 'text-sm'
+                          }`}>
                             <FormattedText text={opcion.texto} />
                           </div>
                         )}
                         {opcion.imagen && (
-                          <div className="mt-2 bg-white p-1.5 rounded-lg border border-slate-200 inline-block shadow-xs">
+                          <div className="mt-1 bg-white p-1 rounded-lg border border-slate-200 inline-block shadow-xs">
                             <img
                               src={opcion.imagen}
                               alt={`Opción ${opcion.letra}`}
-                              className="max-h-32 max-w-full rounded object-contain"
+                              className="max-h-24 max-w-full rounded object-contain"
                             />
                           </div>
                         )}
@@ -604,7 +625,7 @@ export default function PresentarExamenPage() {
             </div>
 
             {/* Status summary */}
-            <div className="pt-4 border-t border-slate-100 text-xs text-slate-500 flex items-center justify-between">
+            <div className="pt-2.5 border-t border-slate-100 text-xs text-slate-500 flex items-center justify-between flex-shrink-0">
               <span>Preguntas respondidas: <strong className="text-emerald-700">{respondidas} de {total}</strong></span>
               {preguntas.filter((p, idx) => !respuestas[p.orden] && (idx < current || maxVisited > idx)).length > 0 && (
                 <span className="text-red-600 font-bold flex items-center gap-1">
@@ -615,12 +636,12 @@ export default function PresentarExamenPage() {
             </div>
 
             {/* Navigation Buttons (Anterior & Siguiente) */}
-            <div className="pt-4 flex items-center justify-between gap-3">
+            <div className="pt-2.5 flex items-center justify-between gap-3 flex-shrink-0">
               <button
                 type="button"
                 onClick={() => setCurrent(c => Math.max(0, c - 1))}
                 disabled={current === 0}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed font-semibold text-sm transition shadow-xs cursor-pointer"
+                className="flex items-center gap-2 px-5 py-2 rounded-xl border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed font-semibold text-xs md:text-sm transition shadow-xs cursor-pointer"
               >
                 ← Anterior
               </button>
@@ -635,7 +656,7 @@ export default function PresentarExamenPage() {
                       return next;
                     });
                   }}
-                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 text-white hover:bg-blue-700 font-bold text-sm transition shadow-md shadow-blue-600/20 cursor-pointer"
+                  className="flex items-center gap-2 px-6 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 font-bold text-xs md:text-sm transition shadow-md shadow-blue-600/20 cursor-pointer"
                 >
                   Siguiente →
                 </button>
@@ -643,7 +664,7 @@ export default function PresentarExamenPage() {
                 <button
                   type="button"
                   onClick={() => setConfirmEnvio(true)}
-                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 font-bold text-sm transition shadow-md shadow-emerald-600/25 cursor-pointer"
+                  className="flex items-center gap-2 px-6 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 font-bold text-xs md:text-sm transition shadow-md shadow-emerald-600/25 cursor-pointer"
                 >
                   {isStaffPreview ? 'Simular Envío de Respuestas ✓' : 'Finalizar y Enviar ✓'}
                 </button>

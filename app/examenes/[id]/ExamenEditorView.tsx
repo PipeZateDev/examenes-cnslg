@@ -858,8 +858,8 @@ export default function ExamenEditorView({
             <div className="bg-white rounded-3xl shadow-2xl p-6 sm:p-8 text-slate-900 border border-slate-200 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[480px]">
               
               {/* Left Column: Enunciado & Diagram */}
-              <div className="lg:col-span-7 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-slate-100 lg:pr-6 pb-6 lg:pb-0">
-                <div>
+              <div className="lg:col-span-7 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-slate-100 lg:pr-6 pb-6 lg:pb-0 h-full overflow-hidden">
+                <div className="flex-1 overflow-y-auto pr-2 max-h-[60vh]">
                   <div className="flex items-center justify-between mb-4 flex-wrap gap-2 pb-3 border-b border-slate-100">
                     <div className="flex items-center gap-2">
                       <span className="bg-blue-100 text-blue-900 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
@@ -876,8 +876,16 @@ export default function ExamenEditorView({
                     </span>
                   </div>
 
-                  {/* Enunciado */}
-                  <div className="text-slate-800 text-lg md:text-xl leading-relaxed mb-6 font-medium">
+                  {/* Enunciado with adaptive text sizing */}
+                  <div className={`text-slate-800 font-medium ${
+                    (preguntas[previewIdx].enunciado || '').length > 1500
+                      ? 'text-xs md:text-[13px] leading-relaxed'
+                      : (preguntas[previewIdx].enunciado || '').length > 750
+                      ? 'text-[13px] md:text-sm leading-relaxed'
+                      : (preguntas[previewIdx].enunciado || '').length > 300
+                      ? 'text-sm md:text-base leading-relaxed'
+                      : 'text-base md:text-lg leading-relaxed'
+                  } mb-6`}>
                     <FormattedText text={preguntas[previewIdx].enunciado} />
                   </div>
 
@@ -887,7 +895,7 @@ export default function ExamenEditorView({
                       <img
                         src={preguntas[previewIdx].imagen!}
                         alt="Diagrama"
-                        className="max-h-72 max-w-full rounded-xl object-contain shadow-sm bg-white p-2"
+                        className="max-h-60 max-w-full rounded-xl object-contain shadow-sm bg-white p-2"
                       />
                     </div>
                   )}

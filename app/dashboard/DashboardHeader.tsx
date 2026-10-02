@@ -11,9 +11,10 @@ interface DashboardHeaderProps {
     rol: Rol;
   };
   rolLabels: Record<Rol, string>;
+  onOpenLivePreview?: () => void;
 }
 
-export default function DashboardHeader({ user, rolLabels }: DashboardHeaderProps) {
+export default function DashboardHeader({ user, rolLabels, onOpenLivePreview }: DashboardHeaderProps) {
   const router = useRouter();
   const [loggingOut, setLoggingOut] = useState(false);
 
@@ -62,14 +63,25 @@ export default function DashboardHeader({ user, rolLabels }: DashboardHeaderProp
         </div>
 
         {/* Live student preview button for all staff */}
-        <Link
-          href="/examen/staff"
-          className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-1.5 rounded-xl text-xs transition flex items-center gap-1.5 shadow-xs"
-          title="Ver cómo los estudiantes ven y presentan los exámenes"
-        >
-          <span>👁️</span>
-          <span>Vista en Vivo</span>
-        </Link>
+        {onOpenLivePreview ? (
+          <button
+            onClick={onOpenLivePreview}
+            className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-1.5 rounded-xl text-xs transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+            title="Abrir selector de exámenes para verlos en vivo como el alumno"
+          >
+            <span>👁️</span>
+            <span>Vista en Vivo</span>
+          </button>
+        ) : (
+          <Link
+            href="/examen/staff"
+            className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-1.5 rounded-xl text-xs transition flex items-center gap-1.5 shadow-xs"
+            title="Ver cómo los estudiantes ven y presentan los exámenes"
+          >
+            <span>👁️</span>
+            <span>Vista en Vivo</span>
+          </Link>
+        )}
 
         {/* Salir de la App (Electron Close) */}
         <button
