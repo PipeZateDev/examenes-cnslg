@@ -84,24 +84,25 @@ export default function ExamenActions({ examenId, estado, totalIntentos = 0, esA
             onClick={() => action('activate')}
             disabled={!!loading}
             className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold transition disabled:opacity-50 shadow-xs flex items-center gap-1.5"
+            title="Activar examen y generar nuevo código de acceso para los estudiantes"
           >
-            {loading === 'activate' ? 'Activando...' : '▶ Activar Examen'}
+            {loading === 'activate' ? 'Activando...' : '▶ Activar Examen (Generar Código)'}
           </button>
         )}
 
-        {/* Reopen / Reactivate from cerrado (Admin only) */}
+        {/* Reopen from cerrado (Admin only - sets status to aprobado, no code generated yet) */}
         {estado === 'cerrado' && esAdmin && (
           <button
             onClick={() => {
-              if (confirm('¿Reactivar este examen? Se generará un nuevo código de acceso para el día de hoy y los estudiantes podrán volver a presentarlo.')) {
-                action('activate');
+              if (confirm('¿Reabrir esta prueba? Pasará a estado Aprobado para que el docente o supervisor correspondiente pueda activarla y generar el nuevo código.')) {
+                action('reopen');
               }
             }}
             disabled={!!loading}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold transition disabled:opacity-50 shadow-md shadow-emerald-700/20 flex items-center gap-1.5"
-            title="Reabrir examen cerrado y generar un nuevo código de acceso"
+            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-bold transition disabled:opacity-50 shadow-md shadow-purple-700/20 flex items-center gap-1.5"
+            title="Reabrir prueba cerrada (pasa a Aprobado para que el docente o supervisor la active)"
           >
-            {loading === 'activate' ? 'Reactivando...' : '▶ Reactivar Examen (Generar Código)'}
+            {loading === 'reopen' ? 'Reabriendo...' : '🔓 Reabrir Prueba'}
           </button>
         )}
 
@@ -109,7 +110,7 @@ export default function ExamenActions({ examenId, estado, totalIntentos = 0, esA
         {estado === 'cerrado' && !esAdmin && (
           <span
             className="px-3.5 py-2 bg-slate-100 text-slate-500 border border-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 select-none"
-            title="Este examen fue cerrado por el docente. Solo el administrador puede reabrirlo."
+            title="Este examen fue cerrado por el docente. Solo el administrador puede reabrir la prueba."
           >
             <span>🔒</span>
             <span>Examen Cerrado (Reapertura por Admin)</span>

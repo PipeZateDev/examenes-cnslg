@@ -45,15 +45,46 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ ok: true });
   }
 
+  // Admin reopens a closed exam -> transitions back to 'aprobado' (ready for teacher/supervisor to activate)
+  if ((action === 'reopen' || action === 'reabrir') && session.rol === 'admin') {
+    const currentEx = await db.collection('ex_examenes').findOne({ _id: new ObjectId(id) });
+    if (!currentEx) return NextResponse.json({ error: 'Examen no encontrado' }, { status: 404 });
+    if (currentEx.estado !== 'cerrado') {
+      return NextResponse.json({ error: 'Solo los exámenes en estado cerrado pueden ser reabiertos.' }, { status: 400 });
+    }
+
+    await db.collection('ex_examenes').updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $set: {
+          estado: 'aprobado',
+          claveAcceso: null,
+        },
+        $unset: {
+          cerradoPor: '',
+          cerradoPorId: '',
+          cerradoPorRol: '',
+          cerradoEn: '',
+        },
+      }
+    );
+
+    return NextResponse.json({
+      ok: true,
+      estado: 'aprobado',
+      mensaje: 'Prueba reabierta exitosamente. Ahora el docente o supervisor a cargo puede activarla para generar el nuevo código.',
+    });
+  }
+
   if (action === 'activate' && hasRole(session.rol, 'docente')) {
     const today = hoy();
     const currentEx = await db.collection('ex_examenes').findOne({ _id: new ObjectId(id) });
     if (!currentEx) return NextResponse.json({ error: 'Examen no encontrado' }, { status: 404 });
 
-    // REGLA: Si el examen fue cerrado, SOLO el Administrador puede reabrirlo / reactivarlo
-    if (currentEx.estado === 'cerrado' && session.rol !== 'admin') {
+    // REGLA: Si el examen está cerrado, el Admin debe primero reabrirlo
+    if (currentEx.estado === 'cerrado') {
       return NextResponse.json({
-        error: 'Este examen fue cerrado por el docente. Únicamente el Administrador del sistema tiene permisos para reabrirlo y reactivarlo.',
+        error: 'Este examen fue cerrado por el docente. El Administrador del sistema debe reabrir la prueba antes de poder activarla.',
       }, { status: 403 });
     }
 
@@ -88,7 +119,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       clave = generateExamAccessKey();
     }
     
-    // Mantener siempre el último usuario que activa/reactiva la prueba
+    // Mantener siempre el último usuario que activa la prueba (docente, supervisor, etc.)
     const activadorNombre = session.nombre || session.username;
     const activadorId = session.userId;
     const activadorRol = session.rol;
@@ -105,7 +136,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           activadoPorId: activadorId,
           activadoPorRol: activadorRol,
           activadoEn: now,
-          ...(currentEx.estado === 'cerrado' ? { reactivadoPorAdmin: true, reactivadoEn: now } : {}),
         },
         $unset: {
           cerradoPor: '',
